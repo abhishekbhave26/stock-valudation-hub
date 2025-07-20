@@ -23,6 +23,9 @@ export interface DCFResults {
   expectedReturn: number;
   cagr: number;
   buyTargetPrice: number;
+  targetPrice1Y: number;
+  targetPrice3Y: number;
+  targetPrice5Y: number;
 }
 
 export interface SavedStock {

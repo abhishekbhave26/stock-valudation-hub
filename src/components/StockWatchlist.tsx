@@ -150,9 +150,10 @@ export default function StockWatchlist() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Price</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fair Value</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Buy Target</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expected Return</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Target Prices</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Return</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">CAGR</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Buy Target</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
@@ -176,11 +177,14 @@ export default function StockWatchlist() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-1">
-                        <Target className="w-4 h-4 text-blue-500" />
-                        <span className="text-sm font-medium text-blue-600">
-                          {formatCurrency(stock.buyTarget)}
-                        </span>
+                      <div className="text-xs space-y-1">
+                        {stock.dcfInputs.projectedPrices && (
+                          <>
+                            <div>1Y: {formatCurrency(stock.dcfInputs.projectedPrices[0] || 0)}</div>
+                            <div>3Y: {formatCurrency(stock.dcfInputs.projectedPrices[2] || 0)}</div>
+                            <div>5Y: {formatCurrency(stock.dcfInputs.projectedPrices[4] || 0)}</div>
+                          </>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -191,6 +195,14 @@ export default function StockWatchlist() {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className={`text-sm font-medium ${getPerformanceColor(stock.cagr, 'cagr')}`}>
                         {formatPercentage(stock.cagr)}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-1">
+                        <Target className="w-4 h-4 text-blue-500" />
+                        <span className="text-sm font-medium text-blue-600">
+                          {formatCurrency(stock.buyTarget)}
+                        </span>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">

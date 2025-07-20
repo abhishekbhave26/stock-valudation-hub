@@ -64,8 +64,13 @@ export function calculateDCF(inputs: DCFInputs): {
   const expectedReturn = ((fairValue - inputs.currentPrice) / inputs.currentPrice) * 100;
   const cagr = (Math.pow(terminalValuePerShare / inputs.currentPrice, 1/5) - 1) * 100;
   
-  // Calculate buy target price to achieve desired return
-  const buyTargetPrice = terminalValuePerShare / Math.pow(1 + discountRate, 5);
+  // Calculate buy target price to achieve desired return (using fair value, not terminal value)
+  const buyTargetPrice = fairValue / Math.pow(1 + discountRate, 5);
+  
+  // Calculate target prices for different time periods
+  const targetPrice1Y = projectedPrices[0]; // Year 1 projected price
+  const targetPrice3Y = projectedPrices[2]; // Year 3 projected price  
+  const targetPrice5Y = projectedPrices[4]; // Year 5 projected price
   
   const results: DCFResults = {
     projectedValues,
@@ -75,7 +80,10 @@ export function calculateDCF(inputs: DCFInputs): {
     fairValue,
     expectedReturn,
     cagr,
-    buyTargetPrice
+    buyTargetPrice,
+    targetPrice1Y,
+    targetPrice3Y,
+    targetPrice5Y
   };
   
   return { results, warnings };
