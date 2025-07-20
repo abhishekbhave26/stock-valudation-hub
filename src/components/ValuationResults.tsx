@@ -107,7 +107,7 @@ export default function ValuationResults({ results, warnings, ticker, dcfInputs,
               {formatCurrency(results.buyTargetPrice)}
             </div>
             <p className="text-sm text-gray-500">Buy Target Price</p>
-            <p className="text-xs text-gray-400">For {formatPercentage(dcfInputs.desiredReturn)} return</p>
+            <p className="text-xs text-gray-400">For {dcfInputs.desiredReturn}% return</p>
           </div>
         </div>
 
