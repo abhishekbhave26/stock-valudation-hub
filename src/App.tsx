@@ -25,10 +25,7 @@ function App() {
           expected_return: stockData.expectedReturn,
           cagr: stockData.cagr,
           buy_target: stockData.buyTarget,
-          dcf_inputs: {
-            ...stockData.dcfInputs,
-            projectedPrices: stockData.results.projectedPrices
-          }
+          dcf_inputs: stockData.dcfInputs
         }]);
 
       if (error) throw error;

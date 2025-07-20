@@ -22,7 +22,10 @@ export default function ValuationResults({ results, warnings, ticker, dcfInputs,
       expectedReturn: results.expectedReturn,
       cagr: results.cagr,
       buyTarget: results.fairValue * 0.8, // 20% margin of safety
-      dcfInputs
+      dcfInputs: {
+        ...dcfInputs,
+        projectedPrices: results.projectedPrices
+      }
     };
     
     onSaveStock(stockData);

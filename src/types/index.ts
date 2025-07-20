@@ -12,6 +12,7 @@ export interface DCFInputs {
   baseMetricPerShare: number;
   desiredReturn: number;
   growthRates: number[];
+  projectedPrices?: number[];
 }
 
 export interface DCFResults {
