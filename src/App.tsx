@@ -16,7 +16,32 @@ function App() {
 
   const handleSaveStock = async (stockData: any) => {
     try {
-      const { error } = await supabase
+      // First check if stock already exists
+      const { data: existingStock } = await supabase
+        .from('saved_stocks')
+        .select('id')
+        .eq('ticker', stockData.ticker)
+        .single();
+
+      let error;
+      if (existingStock) {
+        // Update existing stock
+        const { error: updateError } = await supabase
+          .from('saved_stocks')
+          .update({
+            current_price: stockData.currentPrice,
+            fair_value: stockData.fairValue,
+            expected_return: stockData.expectedReturn,
+            cagr: stockData.cagr,
+            buy_target: stockData.buyTarget,
+            dcf_inputs: stockData.dcfInputs,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingStock.id);
+        error = updateError;
+      } else {
+        // Insert new stock
+        const { error: insertError } = await supabase
         .from('saved_stocks')
         .insert([{
           ticker: stockData.ticker,
@@ -27,6 +52,8 @@ function App() {
           buy_target: stockData.buyTarget,
           dcf_inputs: stockData.dcfInputs
         }]);
+        error = insertError;
+      }
 
       if (error) throw error;
       
