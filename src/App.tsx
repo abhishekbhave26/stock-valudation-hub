@@ -1,15 +1,41 @@
 import React, { useState } from 'react';
-import { Calculator, Wallet, BarChart3 } from 'lucide-react';
+import { Calculator, Wallet, BarChart3, Eye } from 'lucide-react';
 import DCFCalculator from './components/DCFCalculator';
 import PortfolioTracker from './components/PortfolioTracker';
+import StockWatchlist from './components/StockWatchlist';
+import { supabase } from './lib/supabase';
 
 function App() {
-  const [activeTab, setActiveTab] = useState<'dcf' | 'portfolio'>('dcf');
+  const [activeTab, setActiveTab] = useState<'watchlist' | 'dcf' | 'portfolio'>('watchlist');
 
   const tabs = [
+    { id: 'watchlist', label: 'Stock Watchlist', icon: Eye },
     { id: 'dcf', label: 'DCF Valuation', icon: Calculator },
     { id: 'portfolio', label: 'Portfolio Tracker', icon: Wallet }
   ];
+
+  const handleSaveStock = async (stockData: any) => {
+    try {
+      const { error } = await supabase
+        .from('saved_stocks')
+        .insert([{
+          ticker: stockData.ticker,
+          current_price: stockData.currentPrice,
+          fair_value: stockData.fairValue,
+          expected_return: stockData.expectedReturn,
+          cagr: stockData.cagr,
+          buy_target: stockData.buyTarget,
+          dcf_inputs: stockData.dcfInputs
+        }]);
+
+      if (error) throw error;
+      
+      // Switch to watchlist tab to show the saved stock
+      setActiveTab('watchlist');
+    } catch (error) {
+      console.error('Error saving stock:', error);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -57,7 +83,8 @@ function App() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {activeTab === 'dcf' && <DCFCalculator />}
+        {activeTab === 'watchlist' && <StockWatchlist />}
+        {activeTab === 'dcf' && <DCFCalculator onSaveStock={handleSaveStock} />}
         {activeTab === 'portfolio' && <PortfolioTracker />}
       </main>
 
@@ -66,7 +93,7 @@ function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="text-center text-sm text-gray-500">
             <p>Built with React, TypeScript, Tailwind CSS, and Supabase</p>
-            <p className="mt-1">Financial data provided by Finnhub API</p>
+            <p className="mt-1">Manual stock price input for accurate DCF analysis</p>
           </div>
         </div>
       </footer>

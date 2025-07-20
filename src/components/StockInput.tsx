@@ -12,6 +12,7 @@ const VALUATION_METRICS = [
   { value: 'P/E', label: 'Price-to-Earnings (P/E)' },
   { value: 'P/FCF', label: 'Price-to-Free Cash Flow (P/FCF)' },
   { value: 'P/B', label: 'Price-to-Book (P/B)' },
+  { value: 'P/OCF', label: 'Price-to-Operating Cash Flow (P/OCF)' },
   { value: 'EV/Sales', label: 'EV/Sales' },
   { value: 'EV/EBITDA', label: 'EV/EBITDA' }
 ] as const;
@@ -19,36 +20,30 @@ const VALUATION_METRICS = [
 export default function StockInput({ onCalculate, loading }: StockInputProps) {
   const [inputs, setInputs] = useState<DCFInputs>({
     ticker: '',
+    currentPrice: 0,
     valuationMetric: 'P/S',
-    valuationMultiple: 10,
-    baseMetricValue: 0,
+    valuationMultiple: 20,
+    baseMetricPerShare: 0,
+    sharesOutstanding: 0,
     desiredReturn: 12,
-    growthRates: {
-      bull: [25, 20, 15, 12, 10],
-      base: [15, 12, 10, 8, 6],
-      bear: [5, 3, 2, 1, 0]
-    }
+    growthRates: [15, 12, 10, 8, 6]
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (inputs.ticker && inputs.baseMetricValue > 0) {
+    if (inputs.ticker && inputs.baseMetricPerShare > 0 && inputs.currentPrice > 0 && inputs.sharesOutstanding > 0) {
       onCalculate(inputs);
     }
   };
 
-  const updateGrowthRate = (scenario: 'bull' | 'base' | 'bear', year: number, value: number) => {
+  const updateGrowthRate = (year: number, value: number) => {
     setInputs(prev => ({
       ...prev,
-      growthRates: {
-        ...prev.growthRates,
-        [scenario]: prev.growthRates[scenario].map((rate, index) => 
-          index === year ? value : rate
-        )
-      }
+      growthRates: prev.growthRates.map((rate, index) => 
+        index === year ? value : rate
+      )
     }));
   };
-
   return (
     <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
       <div className="flex items-center gap-3 mb-6">
@@ -58,7 +53,7 @@ export default function StockInput({ onCalculate, loading }: StockInputProps) {
       
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Inputs */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Stock Ticker
@@ -78,6 +73,22 @@ export default function StockInput({ onCalculate, loading }: StockInputProps) {
           
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
+              Current Price ($)
+            </label>
+            <input
+              type="number"
+              value={inputs.currentPrice || ''}
+              onChange={(e) => setInputs(prev => ({ ...prev, currentPrice: Number(e.target.value) }))}
+              min="0"
+              step="0.01"
+              placeholder="e.g., 150.25"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              required
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
               Valuation Metric
             </label>
             <select
@@ -92,6 +103,9 @@ export default function StockInput({ onCalculate, loading }: StockInputProps) {
               ))}
             </select>
           </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -110,15 +124,31 @@ export default function StockInput({ onCalculate, loading }: StockInputProps) {
           
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Base Metric Value ($M)
+              Base Metric Per Share ($)
             </label>
             <input
               type="number"
-              value={inputs.baseMetricValue || ''}
-              onChange={(e) => setInputs(prev => ({ ...prev, baseMetricValue: Number(e.target.value) }))}
+              value={inputs.baseMetricPerShare || ''}
+              onChange={(e) => setInputs(prev => ({ ...prev, baseMetricPerShare: Number(e.target.value) }))}
               min="0"
-              step="100"
-              placeholder="e.g., 365000"
+              step="0.01"
+              placeholder="e.g., 15.25"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              required
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Shares Outstanding (M)
+            </label>
+            <input
+              type="number"
+              value={inputs.sharesOutstanding || ''}
+              onChange={(e) => setInputs(prev => ({ ...prev, sharesOutstanding: Number(e.target.value) }))}
+              min="0"
+              step="1"
+              placeholder="e.g., 1500"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               required
             />
@@ -145,41 +175,32 @@ export default function StockInput({ onCalculate, loading }: StockInputProps) {
 
         {/* Growth Rate Projections */}
         <div className="space-y-4">
-          <h3 className="text-lg font-medium text-gray-800">5-Year Growth Rate Projections (%)</h3>
+          <h3 className="text-lg font-medium text-gray-800">5-Year Metric Growth Rate Projections (%)</h3>
+          <p className="text-sm text-gray-600">Enter growth rates for your selected metric (can be positive or negative, up to 10,000%)</p>
           
-          {['bull', 'base', 'bear'].map(scenario => (
-            <div key={scenario} className="space-y-2">
-              <h4 className={`text-sm font-medium capitalize ${
-                scenario === 'bull' ? 'text-green-700' : 
-                scenario === 'base' ? 'text-blue-700' : 'text-red-700'
-              }`}>
-                {scenario} Case
-              </h4>
-              <div className="grid grid-cols-5 gap-2">
-                {[0, 1, 2, 3, 4].map(year => (
-                  <div key={year}>
-                    <label className="block text-xs text-gray-500 mb-1">
-                      Year {year + 1}
-                    </label>
-                    <input
-                      type="number"
-                      value={inputs.growthRates[scenario as keyof typeof inputs.growthRates][year]}
-                      onChange={(e) => updateGrowthRate(scenario as 'bull' | 'base' | 'bear', year, Number(e.target.value))}
-                      min="-50"
-                      max="100"
-                      step="0.1"
-                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                ))}
+          <div className="grid grid-cols-5 gap-4">
+            {[0, 1, 2, 3, 4].map(year => (
+              <div key={year}>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Year {year + 1}
+                </label>
+                <input
+                  type="number"
+                  value={inputs.growthRates[year]}
+                  onChange={(e) => updateGrowthRate(year, Number(e.target.value))}
+                  min="-100"
+                  max="10000"
+                  step="0.1"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
 
         <button
           type="submit"
-          disabled={loading || !inputs.ticker || inputs.baseMetricValue <= 0}
+          disabled={loading || !inputs.ticker || inputs.baseMetricPerShare <= 0 || inputs.currentPrice <= 0 || inputs.sharesOutstanding <= 0}
           className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {loading ? 'Calculating...' : 'Calculate Fair Value'}
@@ -188,3 +209,6 @@ export default function StockInput({ onCalculate, loading }: StockInputProps) {
     </div>
   );
 }
+            </div>
+          ))}
+        </div>

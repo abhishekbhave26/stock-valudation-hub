@@ -8,6 +8,44 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 export type Database = {
   public: {
     Tables: {
+      saved_stocks: {
+        Row: {
+          id: string;
+          ticker: string;
+          current_price: number;
+          fair_value: number;
+          expected_return: number;
+          cagr: number;
+          buy_target: number;
+          dcf_inputs: any;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          ticker: string;
+          current_price: number;
+          fair_value: number;
+          expected_return: number;
+          cagr: number;
+          buy_target: number;
+          dcf_inputs: any;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          ticker?: string;
+          current_price?: number;
+          fair_value?: number;
+          expected_return?: number;
+          cagr?: number;
+          buy_target?: number;
+          dcf_inputs?: any;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
       portfolio_stocks: {
         Row: {
           id: string;

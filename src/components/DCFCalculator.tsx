@@ -3,13 +3,16 @@ import { AlertCircle } from 'lucide-react';
 import StockInput from './StockInput';
 import ValuationResults from './ValuationResults';
 import { DCFInputs, DCFResults, ValidationWarning } from '../types';
-import { fetchStockPrice } from '../utils/stockApi';
 import { calculateDCF } from '../utils/dcf';
 
-export default function DCFCalculator() {
-  const [results, setResults] = useState<DCFResults[]>([]);
+interface DCFCalculatorProps {
+  onSaveStock?: (stockData: any) => void;
+}
+
+export default function DCFCalculator({ onSaveStock }: DCFCalculatorProps) {
+  const [results, setResults] = useState<DCFResults | null>(null);
   const [warnings, setWarnings] = useState<ValidationWarning[]>([]);
-  const [currentPrice, setCurrentPrice] = useState<number>(0);
+  const [dcfInputs, setDcfInputs] = useState<DCFInputs | null>(null);
   const [ticker, setTicker] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
@@ -17,21 +20,19 @@ export default function DCFCalculator() {
   const handleCalculate = async (inputs: DCFInputs) => {
     setLoading(true);
     setError('');
-    setResults([]);
+    setResults(null);
     setWarnings([]);
     
     try {
-      // Fetch current stock price
-      const price = await fetchStockPrice(inputs.ticker);
-      setCurrentPrice(price);
+      setDcfInputs(inputs);
       setTicker(inputs.ticker);
       
       // Calculate DCF
-      const { results: dcfResults, warnings: dcfWarnings } = calculateDCF(inputs, price);
+      const { results: dcfResults, warnings: dcfWarnings } = calculateDCF(inputs);
       setResults(dcfResults);
       setWarnings(dcfWarnings);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch stock data');
+      setError(err instanceof Error ? err.message : 'Failed to calculate DCF');
     } finally {
       setLoading(false);
     }
@@ -53,12 +54,13 @@ export default function DCFCalculator() {
         </div>
       )}
       
-      {results.length > 0 && currentPrice > 0 && (
+      {results && dcfInputs && (
         <ValuationResults
           results={results}
           warnings={warnings}
-          currentPrice={currentPrice}
           ticker={ticker}
+          dcfInputs={dcfInputs}
+          onSaveStock={onSaveStock}
         />
       )}
     </div>

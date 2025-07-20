@@ -6,25 +6,37 @@ export interface StockData {
 
 export interface DCFInputs {
   ticker: string;
+  currentPrice: number;
   valuationMetric: 'P/S' | 'P/E' | 'P/FCF' | 'P/B' | 'EV/Sales' | 'EV/EBITDA';
+  valuationMetric: 'P/S' | 'P/E' | 'P/FCF' | 'P/B' | 'P/OCF' | 'EV/Sales' | 'EV/EBITDA';
   valuationMultiple: number;
-  baseMetricValue: number;
+  baseMetricPerShare: number;
+  sharesOutstanding: number;
   desiredReturn: number;
-  growthRates: {
-    bull: number[];
-    base: number[];
-    bear: number[];
-  };
+  growthRates: number[];
 }
 
 export interface DCFResults {
-  scenario: 'bull' | 'base' | 'bear';
   projectedValues: number[];
+  projectedPrices: number[];
   terminalValue: number;
   presentValue: number;
   fairValue: number;
   expectedReturn: number;
   cagr: number;
+}
+
+export interface SavedStock {
+  id?: string;
+  ticker: string;
+  currentPrice: number;
+  fairValue: number;
+  expectedReturn: number;
+  cagr: number;
+  buyTarget: number;
+  dcfInputs: DCFInputs;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface PortfolioStock {

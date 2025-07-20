@@ -1,27 +1,25 @@
 import { DCFInputs, DCFResults, ValidationWarning } from '../types';
 
-export function calculateDCF(inputs: DCFInputs, currentPrice: number): {
-  results: DCFResults[];
+export function calculateDCF(inputs: DCFInputs): {
+  results: DCFResults;
   warnings: ValidationWarning[];
 } {
   const warnings: ValidationWarning[] = [];
-  const results: DCFResults[] = [];
   
   // Validation warnings
-  const avgGrowthBull = inputs.growthRates.bull.reduce((a, b) => a + b, 0) / 5;
-  const avgGrowthBase = inputs.growthRates.base.reduce((a, b) => a + b, 0) / 5;
+  const avgGrowth = inputs.growthRates.reduce((a, b) => a + b, 0) / 5;
   
-  if (avgGrowthBull > 25) {
+  if (avgGrowth > 50) {
     warnings.push({
       type: 'growth',
-      message: 'Bull case growth rate seems unrealistic (>25% avg)'
+      message: 'Average growth rate seems very high (>50% avg)'
     });
   }
   
-  if (inputs.valuationMultiple > 50) {
+  if (inputs.valuationMultiple > 100) {
     warnings.push({
       type: 'multiple',
-      message: 'Valuation multiple seems very high (>50x)'
+      message: 'Valuation multiple seems very high (>100x)'
     });
   }
   
@@ -32,47 +30,49 @@ export function calculateDCF(inputs: DCFInputs, currentPrice: number): {
     });
   }
   
-  // Calculate for each scenario
-  const scenarios: Array<'bull' | 'base' | 'bear'> = ['bull', 'base', 'bear'];
+  // Calculate DCF
+  const growthRates = inputs.growthRates;
+  const projectedValues: number[] = [];
+  const projectedPrices: number[] = [];
   
-  scenarios.forEach(scenario => {
-    const growthRates = inputs.growthRates[scenario];
-    const projectedValues: number[] = [];
+  // Project metric values for 5 years
+  let currentValue = inputs.baseMetricPerShare;
+  
+  for (let year = 0; year < 5; year++) {
+    currentValue = currentValue * (1 + growthRates[year] / 100);
+    projectedValues.push(currentValue);
     
-    // Project metric values for 5 years
-    let currentValue = inputs.baseMetricValue;
-    for (let year = 0; year < 5; year++) {
-      currentValue = currentValue * (1 + growthRates[year] / 100);
-      projectedValues.push(currentValue);
-    }
-    
-    // Terminal value = final year metric * valuation multiple
-    const terminalValue = projectedValues[4] * inputs.valuationMultiple;
-    
-    // Calculate present value (discount back to today)
-    const discountRate = inputs.desiredReturn / 100;
-    let presentValue = 0;
-    
-    // Discount projected cash flows
-    for (let year = 1; year <= 5; year++) {
-      const yearValue = year < 5 ? projectedValues[year - 1] * 0.1 : terminalValue; // Assume 10% of metric as cash flow, terminal value in year 5
-      presentValue += yearValue / Math.pow(1 + discountRate, year);
-    }
-    
-    const fairValue = presentValue;
-    const expectedReturn = ((fairValue / currentPrice) - 1) * 100;
-    const cagr = (Math.pow(fairValue / currentPrice, 1/5) - 1) * 100;
-    
-    results.push({
-      scenario,
-      projectedValues,
-      terminalValue,
-      presentValue,
-      fairValue,
-      expectedReturn,
-      cagr
-    });
-  });
+    // Calculate projected stock price = metric per share * valuation multiple
+    const projectedPrice = currentValue * inputs.valuationMultiple;
+    projectedPrices.push(projectedPrice);
+  }
+  
+  // Terminal value per share = final year metric per share * valuation multiple
+  const terminalValuePerShare = projectedValues[4] * inputs.valuationMultiple;
+  
+  // Calculate present value (discount back to today)
+  const discountRate = inputs.desiredReturn / 100;
+  let presentValuePerShare = 0;
+  
+  // Discount projected values (assuming 10% of metric converts to cash flow per share)
+  for (let year = 1; year <= 5; year++) {
+    const yearValue = year < 5 ? projectedValues[year - 1] * 0.1 : terminalValuePerShare;
+    presentValuePerShare += yearValue / Math.pow(1 + discountRate, year);
+  }
+  
+  const fairValue = presentValuePerShare;
+  const expectedReturn = ((fairValue / inputs.currentPrice) - 1) * 100;
+  const cagr = (Math.pow(fairValue / inputs.currentPrice, 1/5) - 1) * 100;
+  
+  const results: DCFResults = {
+    projectedValues,
+    projectedPrices,
+    terminalValue: terminalValuePerShare,
+    presentValue: presentValuePerShare,
+    fairValue,
+    expectedReturn,
+    cagr
+  };
   
   return { results, warnings };
 }
