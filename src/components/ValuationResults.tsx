@@ -19,7 +19,7 @@ export default function ValuationResults({ results, warnings, ticker, dcfInputs,
       ticker,
       currentPrice: dcfInputs.currentPrice,
       fairValue: results.fairValue,
-      expectedReturn: results.expectedReturn,
+      expectedReturn: results.totalReturn,
       cagr: results.cagr,
       buyTarget: results.fairValue * 0.8, // 20% margin of safety
       dcfInputs: {
