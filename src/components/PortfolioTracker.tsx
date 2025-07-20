@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Plus, TrendingUp, TrendingDown, Wallet, Filter } from 'lucide-react';
 import { PortfolioStock } from '../types';
 import { supabase } from '../lib/supabase';
-import { fetchMultipleStockPrices } from '../utils/stockApi';
 import { formatCurrency, formatPercentage } from '../utils/dcf';
 import { format } from 'date-fns';
 
@@ -35,11 +34,8 @@ export default function PortfolioTracker() {
       if (error) throw error;
 
       if (data && data.length > 0) {
-        const tickers = data.map(stock => stock.ticker);
-        const prices = await fetchMultipleStockPrices(tickers);
-
         const enrichedStocks: PortfolioStock[] = data.map(stock => {
-          const currentPrice = prices[stock.ticker] || 0;
+          const currentPrice = stock.buy_price; // Use buy price as current price for now
           const totalValue = currentPrice * stock.quantity;
           const totalCost = stock.buy_price * stock.quantity;
           const totalReturn = totalCost > 0 ? ((totalValue - totalCost) / totalCost) * 100 : 0;
