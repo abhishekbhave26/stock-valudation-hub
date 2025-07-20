@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, Target, Edit, Trash2, BarChart3 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Trash2, BarChart3 } from 'lucide-react';
 import { SavedStock } from '../types';
 import { supabase } from '../lib/supabase';
-import { fetchMultipleStockPrices } from '../utils/stockApi';
 import { formatCurrency, formatPercentage, getPerformanceColor } from '../utils/dcf';
 
 export default function StockWatchlist() {
@@ -26,21 +25,18 @@ export default function StockWatchlist() {
       if (error) throw error;
 
       if (data) {
-        // Extract tickers and fetch current prices
-        const tickers = data.map(stock => stock.ticker);
-        const prices = await fetchMultipleStockPrices(tickers);
-        
         const enrichedStocks: SavedStock[] = data.map(stock => {
-          const currentPrice = prices[stock.ticker] || 0;
+          // Use the current price from DCF inputs
+          const currentPrice = stock.current_price;
           
           // Get terminal value from DCF inputs
           const terminalValue = stock.dcf_inputs?.projectedPrices?.[4] || 0;
           
           // Calculate total return from current price to terminal value
-          const totalReturn = stock.current_price > 0 ? ((terminalValue - stock.current_price) / stock.current_price) * 100 : 0;
+          const totalReturn = currentPrice > 0 ? ((terminalValue - currentPrice) / currentPrice) * 100 : 0;
           
           // Calculate CAGR from current price to terminal value over 5 years
-          const cagr = stock.current_price > 0 ? (Math.pow(terminalValue / stock.current_price, 1/5) - 1) * 100 : 0;
+          const cagr = currentPrice > 0 ? (Math.pow(terminalValue / currentPrice, 1/5) - 1) * 100 : 0;
 
           return {
             ...stock,
