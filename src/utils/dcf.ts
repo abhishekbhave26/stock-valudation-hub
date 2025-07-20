@@ -18,10 +18,10 @@ export function calculateDCF(inputs: DCFInputs): { results: DCFResults; warnings
     });
   }
   
-  if (inputs.valuationMultiple > 50) {
+  if (inputs.valuationMultiple > 80) {
     warnings.push({
       type: 'multiple',
-      message: 'Valuation multiple above 50x may indicate overvaluation'
+      message: 'Valuation multiple above 80x may indicate overvaluation'
     });
   }
 
