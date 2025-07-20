@@ -481,7 +481,7 @@ export default function PortfolioTracker() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-gray-600">Buy Price:</span>
-                    <span className="font-medium">{formatCurrency(stock.buyPrice)}</span>
+                    <span className="font-medium">{formatCurrency(stock.buy_price)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-gray-600">Total Value:</span>
