@@ -213,3 +213,4 @@ export default function StockInput({ onCalculate, loading }: StockInputProps) {
       </form>
     </div>
   );
+}
