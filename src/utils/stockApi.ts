@@ -1,5 +1,5 @@
 // Using Finnhub API for stock prices (free tier available)
-const FINNHUB_API_KEY = 'demo'; // In production, use environment variable
+const FINNHUB_API_KEY = import.meta.env.VITE_FINNHUB_API_KEY || 'demo';
 
 export async function fetchStockPrice(ticker: string): Promise<number> {
   try {
