@@ -20,7 +20,7 @@ export interface DCFResults {
   terminalValue: number;
   presentValue: number;
   fairValue: number;
-  expectedReturn: number;
+  totalReturn: number;
   cagr: number;
   buyTargetPrice: number;
   targetPrice1Y: number;

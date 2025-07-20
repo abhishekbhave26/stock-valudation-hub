@@ -86,8 +86,8 @@ export default function ValuationResults({ results, warnings, ticker, dcfInputs,
           </div>
 
           <div className="text-center p-4 bg-white rounded-lg border border-gray-200">
-            <div className={`text-3xl font-bold ${getPerformanceColor(results.expectedReturn, 'return')}`}>
-              {formatPercentage(results.expectedReturn)}
+            <div className={`text-3xl font-bold ${getPerformanceColor(results.totalReturn, 'return')}`}>
+              {formatPercentage(results.totalReturn)}
             </div>
             <p className="text-sm text-gray-500">Total Return</p>
           </div>
@@ -165,8 +165,8 @@ export default function ValuationResults({ results, warnings, ticker, dcfInputs,
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Upside/Downside:</span>
-                <span className={`font-medium ${results.expectedReturn >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {formatPercentage(results.expectedReturn)}
+                <span className={`font-medium ${results.totalReturn >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {formatPercentage(results.totalReturn)}
                 </span>
               </div>
               <div className="flex justify-between border-t pt-2">
