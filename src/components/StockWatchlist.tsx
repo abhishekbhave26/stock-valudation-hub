@@ -26,10 +26,16 @@ export default function StockWatchlist() {
 
       if (data) {
         const enrichedStocks: SavedStock[] = data.map(stock => ({
-          ...stock,
+          id: stock.id,
+          ticker: stock.ticker,
+          currentPrice: stock.current_price,
+          fairValue: stock.fair_value,
+          expectedReturn: stock.expected_return,
+          cagr: stock.cagr,
+          buyTarget: stock.buy_target,
+          dcfInputs: stock.dcf_inputs,
           createdAt: new Date(stock.created_at),
-          updatedAt: new Date(stock.updated_at),
-          dcfInputs: stock.dcf_inputs
+          updatedAt: new Date(stock.updated_at)
         }));
         setStocks(enrichedStocks);
       }
