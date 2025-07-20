@@ -693,22 +693,3 @@ export default function PortfolioTracker() {
     </div>
   );
 }
-
-                      </div>
-                    </div>
-                    <div className="flex justify-between items-center mt-1">
-                      <span className="text-sm text-gray-600">CAGR:</span>
-                      <span className={`font-bold ${(stock.cagr || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {formatPercentage(stock.cagr || 0)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
