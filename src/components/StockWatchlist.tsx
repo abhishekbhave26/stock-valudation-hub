@@ -127,13 +127,11 @@ export default function StockWatchlist() {
   const getValuationStatus = (stock: SavedStock) => {
     const currentPrice = stock.currentPrice;
     const fairValue = stock.fairValue;
-    const buyTarget = stock.buyTarget;
     
-    if (currentPrice <= buyTarget) return { status: 'strong-buy', color: 'bg-green-600', text: 'Strong Buy' };
-    if (currentPrice <= fairValue * 0.9) return { status: 'buy', color: 'bg-green-500', text: 'Buy' };
-    if (currentPrice <= fairValue) return { status: 'hold', color: 'bg-yellow-500', text: 'Hold' };
-    if (currentPrice <= fairValue * 1.1) return { status: 'weak-hold', color: 'bg-orange-500', text: 'Weak Hold' };
-    return { status: 'sell', color: 'bg-red-600', text: 'Overvalued' };
+    if (currentPrice <= fairValue * 0.8) return { status: 'strong-buy', color: 'bg-green-600', text: 'Strong Buy' };
+    if (currentPrice <= fairValue) return { status: 'buy', color: 'bg-green-500', text: 'Buy' };
+    if (currentPrice <= fairValue * 1.2) return { status: 'hold', color: 'bg-yellow-500', text: 'Hold' };
+    return { status: 'overvalued', color: 'bg-red-600', text: 'Overvalued' };
   };
 
   if (loading) {
@@ -295,7 +293,6 @@ export default function StockWatchlist() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Target Prices</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">CAGR</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fair Value</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Buy Target</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
@@ -332,11 +329,6 @@ export default function StockWatchlist() {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-green-600">
                         {formatCurrency(stock.fairValue)}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-blue-600">
-                        {formatCurrency(stock.buyTarget)}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
