@@ -117,12 +117,15 @@ export default function ValuationResults({ results, warnings, ticker, dcfInputs,
                 <tbody className="divide-y divide-gray-200">
                   {results.projectedValues.map((value, index) => (
                     const currentYear = new Date().getFullYear();
+                    return (
                     <tr key={index} className="hover:bg-gray-50">
                       <td className="px-4 py-2 text-sm font-medium text-gray-900">{currentYear + index + 1}</td>
                       <td className="px-4 py-2 text-sm text-gray-800">${value.toFixed(2)}</td>
                       <td className="px-4 py-2 text-sm text-blue-600 font-medium">{formatCurrency(results.projectedPrices[index])}</td>
                       <td className="px-4 py-2 text-sm text-gray-600">{formatPercentage(dcfInputs.growthRates[index])}</td>
                     </tr>
+                    );
+                  })}
                   ))}
                 </tbody>
               </table>
