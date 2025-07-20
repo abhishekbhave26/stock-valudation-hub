@@ -17,11 +17,13 @@ function App() {
   const handleSaveStock = async (stockData: any) => {
     try {
       // First check if stock already exists
-      const { data: existingStock } = await supabase
+      const { data: existingStocks } = await supabase
         .from('saved_stocks')
         .select('id')
         .eq('ticker', stockData.ticker)
-        .single();
+        .limit(1);
+
+      const existingStock = existingStocks && existingStocks.length > 0 ? existingStocks[0] : null;
 
       let error;
       if (existingStock) {
