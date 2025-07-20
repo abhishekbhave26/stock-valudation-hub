@@ -7,7 +7,6 @@ export interface StockData {
 export interface DCFInputs {
   ticker: string;
   currentPrice: number;
-  valuationMetric: 'P/S' | 'P/E' | 'P/FCF' | 'P/B' | 'EV/Sales' | 'EV/EBITDA';
   valuationMetric: 'P/S' | 'P/E' | 'P/FCF' | 'P/B' | 'P/OCF' | 'EV/Sales' | 'EV/EBITDA';
   valuationMultiple: number;
   baseMetricPerShare: number;
