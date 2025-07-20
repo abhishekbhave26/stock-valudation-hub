@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, Target, Edit, Trash2, BarChart3 } from 'lucide-react';
 import { SavedStock } from '../types';
 import { supabase } from '../lib/supabase';
+import { fetchMultipleStockPrices } from '../utils/stockApi';
 import { formatCurrency, formatPercentage, getPerformanceColor } from '../utils/dcf';
 
 export default function StockWatchlist() {
@@ -25,6 +26,10 @@ export default function StockWatchlist() {
       if (error) throw error;
 
       if (data) {
+        // Extract tickers and fetch current prices
+        const tickers = data.map(stock => stock.ticker);
+        const prices = await fetchMultipleStockPrices(tickers);
+        
         const enrichedStocks: SavedStock[] = data.map(stock => {
           const currentPrice = prices[stock.ticker] || 0;
           
