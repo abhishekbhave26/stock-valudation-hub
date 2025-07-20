@@ -115,7 +115,7 @@ export default function ValuationResults({ results, warnings, ticker, dcfInputs,
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {results.projectedValues.map((value, index) => (
+                  {results.projectedValues.map((value, index) => {
                     const currentYear = new Date().getFullYear();
                     return (
                     <tr key={index} className="hover:bg-gray-50">
@@ -126,7 +126,6 @@ export default function ValuationResults({ results, warnings, ticker, dcfInputs,
                     </tr>
                     );
                   })}
-                  ))}
                 </tbody>
               </table>
             </div>
