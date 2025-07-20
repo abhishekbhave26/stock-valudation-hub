@@ -9,10 +9,10 @@ export function calculateDCF(inputs: DCFInputs): {
   // Validation warnings
   const avgGrowth = inputs.growthRates.reduce((a, b) => a + b, 0) / 5;
   
-  if (avgGrowth > 50) {
+  if (avgGrowth > 100) {
     warnings.push({
       type: 'growth',
-      message: 'Average growth rate seems very high (>50% avg)'
+      message: 'Average growth rate seems very high (>100% avg)'
     });
   }
   
@@ -23,10 +23,10 @@ export function calculateDCF(inputs: DCFInputs): {
     });
   }
   
-  if (inputs.desiredReturn < 5) {
+  if (inputs.desiredReturn < 7) {
     warnings.push({
       type: 'return',
-      message: 'Desired return rate seems low (<5%)'
+      message: 'Desired return rate seems low (<7%)'
     });
   }
   
