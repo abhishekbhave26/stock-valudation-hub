@@ -42,12 +42,12 @@ export default function PortfolioTracker() {
           const currentPrice = stock.current_price || stock.buy_price;
           const totalValue = currentPrice * stock.quantity;
           const totalCost = stock.buy_price * stock.quantity;
-          const totalReturn = totalCost > 0 ? ((totalValue - totalCost) / totalCost) * 100 : 0;
+          const totalReturn = totalCost > 0 ? (totalValue - totalCost) / totalCost : 0;
           
           // Calculate CAGR
           const purchaseDate = new Date(stock.purchase_date);
           const yearsDiff = (Date.now() - purchaseDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
-          const cagr = yearsDiff > 0 ? (Math.pow(currentPrice / stock.buy_price, 1 / yearsDiff) - 1) * 100 : 0;
+          const cagr = yearsDiff > 0 ? Math.pow(currentPrice / stock.buy_price, 1 / yearsDiff) - 1 : 0;
 
           return {
             ...stock,
@@ -171,7 +171,9 @@ export default function PortfolioTracker() {
 
   const totalPortfolioValue = portfolioStocks.reduce((sum, stock) => sum + (stock.totalValue || 0), 0);
   const totalCost = portfolioStocks.reduce((sum, stock) => sum + (stock.buyPrice * stock.quantity), 0);
-  const totalReturn = totalCost > 0 ? ((totalPortfolioValue - totalCost) / totalCost) * 100 : 0;
+  const totalPortfolioValue = portfolioStocks.reduce((sum, stock) => sum + (stock.totalValue || 0), 0);
+  const totalCost = portfolioStocks.reduce((sum, stock) => sum + (stock.buy_price * stock.quantity), 0);
+  const totalReturn = totalCost > 0 ? (totalPortfolioValue - totalCost) / totalCost : 0;
 
   // Prepare data for visualizations
   const pieChartData = portfolioStocks.map(stock => ({
@@ -182,8 +184,8 @@ export default function PortfolioTracker() {
 
   const barChartData = portfolioStocks.map(stock => ({
     ticker: stock.ticker,
-    totalReturn: stock.totalReturn || 0,
-    cagr: stock.cagr || 0
+    totalReturn: (stock.totalReturn || 0) * 100,
+    cagr: (stock.cagr || 0) * 100
   }));
 
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFC658', '#FF7C7C'];
