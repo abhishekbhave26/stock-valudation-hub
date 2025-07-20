@@ -211,8 +211,7 @@ export default function PortfolioTracker() {
 
   const barChartData = portfolioStocks.map(stock => ({
     ticker: stock.ticker,
-    totalReturn: (stock.totalReturn || 0) * 100,
-    cagr: (stock.cagr || 0) * 100
+    totalReturn: (stock.totalReturn || 0) * 100
   }));
 
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFC658', '#FF7C7C'];
@@ -305,7 +304,6 @@ export default function PortfolioTracker() {
                   <Tooltip formatter={(value) => `${(value as number).toFixed(2)}%`} />
                   <Legend />
                   <Bar dataKey="totalReturn" fill="#8884d8" name="Total Return %" />
-                  <Bar dataKey="cagr" fill="#82ca9d" name="CAGR %" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -543,6 +541,12 @@ export default function PortfolioTracker() {
                       <span className="text-sm text-gray-600">Total Value:</span>
                       <span className="font-medium">{formatCurrency(stock.totalValue || 0)}</span>
                     </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">Portfolio %:</span>
+                      <span className="font-medium text-blue-600">
+                        {totalPortfolioValue > 0 ? ((stock.totalValue || 0) / totalPortfolioValue * 100).toFixed(1) : '0.0'}%
+                      </span>
+                    </div>
                     
                     <div className="pt-3 border-t border-gray-200">
                       <div className="flex justify-between items-center">
@@ -581,6 +585,7 @@ export default function PortfolioTracker() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Buy Price</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Price</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Value</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Portfolio %</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Return</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">CAGR</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Purchase Date</th>
@@ -604,6 +609,11 @@ export default function PortfolioTracker() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-gray-900">{formatCurrency(stock.totalValue || 0)}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-blue-600">
+                          {totalPortfolioValue > 0 ? ((stock.totalValue || 0) / totalPortfolioValue * 100).toFixed(1) : '0.0'}%
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-1">
