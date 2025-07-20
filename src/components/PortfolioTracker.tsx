@@ -170,8 +170,6 @@ export default function PortfolioTracker() {
     });
 
   const totalPortfolioValue = portfolioStocks.reduce((sum, stock) => sum + (stock.totalValue || 0), 0);
-  const totalCost = portfolioStocks.reduce((sum, stock) => sum + (stock.buyPrice * stock.quantity), 0);
-  const totalPortfolioValue = portfolioStocks.reduce((sum, stock) => sum + (stock.totalValue || 0), 0);
   const totalCost = portfolioStocks.reduce((sum, stock) => sum + (stock.buy_price * stock.quantity), 0);
   const totalReturn = totalCost > 0 ? (totalPortfolioValue - totalCost) / totalCost : 0;
 
