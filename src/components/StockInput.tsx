@@ -144,7 +144,7 @@ export default function StockInput({ onCalculate, loading }: StockInputProps) {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Base Metric Per Share (Current Year)
+              Base Metric Per Share ({new Date().getFullYear()})
             </label>
             <input
               type="number"
