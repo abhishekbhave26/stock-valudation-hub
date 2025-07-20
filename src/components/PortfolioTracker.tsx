@@ -78,9 +78,9 @@ export default function PortfolioTracker() {
         .insert([{
           ticker: newStock.ticker.toUpperCase(),
           quantity: newStock.quantity,
-          buy_price: Math.round(newStock.buyPrice),
+          buy_price: newStock.buyPrice,
           purchase_date: newStock.purchaseDate,
-          current_price: Math.round(newStock.currentPrice)
+          current_price: newStock.currentPrice
         }]);
 
       if (error) throw error;
@@ -118,7 +118,7 @@ export default function PortfolioTracker() {
     setEditForm({
       ticker: stock.ticker,
       quantity: stock.quantity,
-      buyPrice: stock.buyPrice,
+      buyPrice: stock.buy_price,
       purchaseDate: format(stock.purchaseDate, 'yyyy-MM-dd'),
       currentPrice: stock.currentPrice || stock.buyPrice
     });
@@ -138,9 +138,9 @@ export default function PortfolioTracker() {
         .update({
           ticker: editForm.ticker.toUpperCase(),
           quantity: editForm.quantity,
-          buy_price: Math.round(editForm.buyPrice),
+          buy_price: editForm.buyPrice,
           purchase_date: editForm.purchaseDate,
-          current_price: Math.round(editForm.currentPrice)
+          current_price: editForm.currentPrice
         })
         .eq('id', editingStock);
 
