@@ -1,82 +1,83 @@
-export interface DCFInputs {
-  currentPrice: number;
-  revenue: number;
-  revenueGrowthRate: number;
-  netMargin: number;
-  terminalGrowthRate: number;
-  discountRate: number;
-  sharesOutstanding: number;
-  desiredReturn: number;
-}
+import { DCFInputs, DCFResults, ValidationWarning } from '../types';
 
-export interface DCFResults {
-  fairValue: number;
-  projectedValues: number[];
-  projectedPrices: number[];
-  terminalValue: number;
-  totalReturn: number;
-  cagr: number;
-  buyTargetPrice: number;
-}
-
-export function calculateDCF(inputs: DCFInputs): DCFResults {
-  const {
-    currentPrice,
-    revenue,
-    revenueGrowthRate,
-    netMargin,
-    terminalGrowthRate,
-    discountRate,
-    sharesOutstanding,
-    desiredReturn
-  } = inputs;
+export function calculateDCF(inputs: DCFInputs): { results: DCFResults; warnings: ValidationWarning[] } {
+  const warnings: ValidationWarning[] = [];
+  
+  // Validate inputs and add warnings
+  if (inputs.desiredReturn > 25) {
+    warnings.push({
+      type: 'return',
+      message: 'Desired return above 25% may be unrealistic for most stocks'
+    });
+  }
+  
+  if (inputs.growthRates.some(rate => rate > 30)) {
+    warnings.push({
+      type: 'growth',
+      message: 'Growth rates above 30% may be unsustainable long-term'
+    });
+  }
+  
+  if (inputs.valuationMultiple > 50) {
+    warnings.push({
+      type: 'multiple',
+      message: 'Valuation multiple above 50x may indicate overvaluation'
+    });
+  }
 
   const projectedValues: number[] = [];
   const projectedPrices: number[] = [];
   
-  // Calculate projected cash flows for 5 years
-  for (let year = 1; year <= 5; year++) {
-    const projectedRevenue = revenue * Math.pow(1 + revenueGrowthRate / 100, year);
-    const projectedEarnings = projectedRevenue * (netMargin / 100);
-    const projectedPrice = projectedEarnings / sharesOutstanding;
+  // Calculate projected values and prices for 5 years
+  let currentMetricValue = inputs.baseMetricPerShare;
+  
+  for (let year = 0; year < 5; year++) {
+    const growthRate = inputs.growthRates[year] / 100;
+    currentMetricValue = currentMetricValue * (1 + growthRate);
+    const projectedPrice = currentMetricValue * inputs.valuationMultiple;
     
-    projectedValues.push(projectedEarnings);
+    projectedValues.push(currentMetricValue);
     projectedPrices.push(projectedPrice);
   }
 
-  // Terminal value calculation
-  const terminalEarnings = projectedValues[4] * (1 + terminalGrowthRate / 100);
-  const terminalValue = terminalEarnings / (discountRate / 100 - terminalGrowthRate / 100);
-  const terminalPrice = terminalValue / sharesOutstanding;
-
-  // Present value calculation
+  // Terminal value (Year 5 price)
+  const terminalValue = projectedPrices[4];
+  
+  // Present value calculation using desired return as discount rate
+  const discountRate = inputs.desiredReturn / 100;
   let presentValue = 0;
+  
   for (let year = 1; year <= 5; year++) {
-    presentValue += projectedValues[year - 1] / Math.pow(1 + discountRate / 100, year);
+    presentValue += projectedPrices[year - 1] / Math.pow(1 + discountRate, year);
   }
   
-  const presentValueOfTerminal = terminalValue / Math.pow(1 + discountRate / 100, 5);
-  const totalPresentValue = presentValue + presentValueOfTerminal;
-  const fairValue = totalPresentValue / sharesOutstanding;
-
-  // Calculate Total Return (from current price to terminal price)
-  const totalReturn = (terminalPrice - currentPrice) / currentPrice;
+  // Fair value is the present value of all future cash flows
+  const fairValue = presentValue / 5; // Average present value
   
-  // Calculate CAGR (from current price to terminal price over 5 years)
-  const cagr = Math.pow(terminalPrice / currentPrice, 1/5) - 1;
+  // Calculate total return from current price to terminal value
+  const totalReturn = (terminalValue - inputs.currentPrice) / inputs.currentPrice;
   
-  // Calculate Buy Target Price (price to pay today for desired return)
-  const buyTargetPrice = terminalPrice / Math.pow(1 + desiredReturn / 100, 5);
+  // Calculate CAGR from current price to terminal value over 5 years
+  const cagr = Math.pow(terminalValue / inputs.currentPrice, 1/5) - 1;
+  
+  // Calculate buy target price for desired return
+  const buyTargetPrice = terminalValue / Math.pow(1 + discountRate, 5);
 
-  return {
-    fairValue,
+  const results: DCFResults = {
     projectedValues,
     projectedPrices,
-    terminalValue: terminalPrice,
+    terminalValue,
+    presentValue,
+    fairValue,
     totalReturn,
     cagr,
-    buyTargetPrice
+    buyTargetPrice,
+    targetPrice1Y: projectedPrices[0],
+    targetPrice3Y: projectedPrices[2],
+    targetPrice5Y: projectedPrices[4]
   };
+
+  return { results, warnings };
 }
 
 export function formatCurrency(value: number): string {
