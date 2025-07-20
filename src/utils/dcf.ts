@@ -11,7 +11,7 @@ export function calculateDCF(inputs: DCFInputs): { results: DCFResults; warnings
     });
   }
   
-  if (inputs.growthRates.some(rate => rate > 50)) {
+  if (inputs.growthRates.some(rate => rate > 5000)) {
     warnings.push({
       type: 'growth',
       message: 'Growth rates above 50% may be unsustainable long-term'
