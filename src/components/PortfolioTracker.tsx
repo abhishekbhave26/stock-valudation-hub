@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, TrendingUp, TrendingDown, Wallet, Filter, Edit, Save, X, PieChart } from 'lucide-react';
+import { Plus, TrendingUp, TrendingDown, Wallet, Filter, Edit, Save, X, PieChart, Grid, List } from 'lucide-react';
 import { PortfolioStock } from '../types';
 import { supabase } from '../lib/supabase';
 import { formatCurrency, formatPercentage } from '../utils/dcf';
@@ -10,8 +10,9 @@ export default function PortfolioTracker() {
   const [portfolioStocks, setPortfolioStocks] = useState<PortfolioStock[]>([]);
   const [loading, setLoading] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [sortBy, setSortBy] = useState<'ticker' | 'totalReturn' | 'cagr'>('ticker');
+  const [sortBy, setSortBy] = useState<'ticker' | 'totalReturn' | 'cagr' | 'totalValue'>('ticker');
   const [filterBy, setFilterBy] = useState<'all' | 'positive' | 'negative'>('all');
+  const [viewMode, setViewMode] = useState<'tile' | 'list'>('tile');
   const [editingStock, setEditingStock] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<any>(null);
 
@@ -164,6 +165,8 @@ export default function PortfolioTracker() {
           return (b.totalReturn || 0) - (a.totalReturn || 0);
         case 'cagr':
           return (b.cagr || 0) - (a.cagr || 0);
+        case 'totalValue':
+          return (b.totalValue || 0) - (a.totalValue || 0);
         default:
           return a.ticker.localeCompare(b.ticker);
       }
@@ -288,6 +291,7 @@ export default function PortfolioTracker() {
                 <option value="ticker">Sort by Ticker</option>
                 <option value="totalReturn">Sort by Return</option>
                 <option value="cagr">Sort by CAGR</option>
+                <option value="totalValue">Sort by Total Value</option>
               </select>
             </div>
             
@@ -300,6 +304,21 @@ export default function PortfolioTracker() {
               <option value="positive">Profitable</option>
               <option value="negative">Losing</option>
             </select>
+            
+            <div className="flex items-center gap-1 border border-gray-300 rounded">
+              <button
+                onClick={() => setViewMode('tile')}
+                className={`p-2 ${viewMode === 'tile' ? 'bg-blue-500 text-white' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                <Grid className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setViewMode('list')}
+                className={`p-2 ${viewMode === 'list' ? 'bg-blue-500 text-white' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                <List className="w-4 h-4" />
+              </button>
+            </div>
           </div>
           
           <button
@@ -390,116 +409,291 @@ export default function PortfolioTracker() {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredAndSortedStocks.map((stock) => (
-            <div key={stock.id} className="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition-shadow relative">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="text-lg font-bold text-gray-800">{stock.ticker}</h3>
-                  <p className="text-sm text-gray-500">
-                    {stock.quantity} shares • {format(stock.purchaseDate, 'MMM dd, yyyy')}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => startEdit(stock)}
-                    className="text-blue-500 hover:text-blue-700 text-sm"
-                  >
-                    <Edit className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => removeStock(stock.id!)}
-                    className="text-gray-400 hover:text-red-500 text-sm"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-
-              {editingStock === stock.id ? (
-                <div className="space-y-3 border-t pt-4">
-                  <div className="grid grid-cols-2 gap-2">
-                    <input
-                      type="text"
-                      value={editForm.ticker}
-                      onChange={(e) => setEditForm(prev => ({ ...prev, ticker: e.target.value.toUpperCase() }))}
-                      className="px-2 py-1 border border-gray-300 rounded text-sm"
-                      placeholder="Ticker"
-                    />
-                    <input
-                      type="number"
-                      value={editForm.quantity}
-                      onChange={(e) => setEditForm(prev => ({ ...prev, quantity: Number(e.target.value) }))}
-                      className="px-2 py-1 border border-gray-300 rounded text-sm"
-                      placeholder="Quantity"
-                    />
-                    <input
-                      type="number"
-                      value={editForm.buyPrice}
-                      onChange={(e) => setEditForm(prev => ({ ...prev, buyPrice: Number(e.target.value) }))}
-                      className="px-2 py-1 border border-gray-300 rounded text-sm"
-                      placeholder="Buy Price"
-                      step="0.01"
-                    />
-                    <input
-                      type="number"
-                      value={editForm.currentPrice}
-                      onChange={(e) => setEditForm(prev => ({ ...prev, currentPrice: Number(e.target.value) }))}
-                      className="px-2 py-1 border border-gray-300 rounded text-sm"
-                      placeholder="Current Price"
-                      step="0.01"
-                    />
+        viewMode === 'tile' ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredAndSortedStocks.map((stock) => (
+              <div key={stock.id} className="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition-shadow relative">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-800">{stock.ticker}</h3>
+                    <p className="text-sm text-gray-500">
+                      {stock.quantity} shares • {format(stock.purchaseDate, 'MMM dd, yyyy')}
+                    </p>
                   </div>
-                  <input
-                    type="date"
-                    value={editForm.purchaseDate}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, purchaseDate: e.target.value }))}
-                    className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
-                  />
                   <div className="flex gap-2">
                     <button
-                      onClick={saveEdit}
-                      className="flex items-center gap-1 bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700"
+                      onClick={() => startEdit(stock)}
+                      className="text-blue-500 hover:text-blue-700 text-sm"
                     >
-                      <Save className="w-3 h-3" />
-                      Save
+                      <Edit className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={cancelEdit}
-                      className="flex items-center gap-1 bg-gray-500 text-white px-3 py-1 rounded text-sm hover:bg-gray-600"
+                      onClick={() => removeStock(stock.id!)}
+                      className="text-gray-400 hover:text-red-500 text-sm"
                     >
-                      <X className="w-3 h-3" />
-                      Cancel
+                      <X className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Current Price:</span>
-                    <span className="font-medium">{formatCurrency(stock.currentPrice || 0)}</span>
+
+                {editingStock === stock.id ? (
+                  <div className="space-y-3 border-t pt-4">
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="text"
+                        value={editForm.ticker}
+                        onChange={(e) => setEditForm(prev => ({ ...prev, ticker: e.target.value.toUpperCase() }))}
+                        className="px-2 py-1 border border-gray-300 rounded text-sm"
+                        placeholder="Ticker"
+                      />
+                      <input
+                        type="number"
+                        value={editForm.quantity}
+                        onChange={(e) => setEditForm(prev => ({ ...prev, quantity: Number(e.target.value) }))}
+                        className="px-2 py-1 border border-gray-300 rounded text-sm"
+                        placeholder="Quantity"
+                      />
+                      <input
+                        type="number"
+                        value={editForm.buyPrice}
+                        onChange={(e) => setEditForm(prev => ({ ...prev, buyPrice: Number(e.target.value) }))}
+                        className="px-2 py-1 border border-gray-300 rounded text-sm"
+                        placeholder="Buy Price"
+                        step="0.01"
+                      />
+                      <input
+                        type="number"
+                        value={editForm.currentPrice}
+                        onChange={(e) => setEditForm(prev => ({ ...prev, currentPrice: Number(e.target.value) }))}
+                        className="px-2 py-1 border border-gray-300 rounded text-sm"
+                        placeholder="Current Price"
+                        step="0.01"
+                      />
+                    </div>
+                    <input
+                      type="date"
+                      value={editForm.purchaseDate}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, purchaseDate: e.target.value }))}
+                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={saveEdit}
+                        className="flex items-center gap-1 bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700"
+                      >
+                        <Save className="w-3 h-3" />
+                        Save
+                      </button>
+                      <button
+                        onClick={cancelEdit}
+                        className="flex items-center gap-1 bg-gray-500 text-white px-3 py-1 rounded text-sm hover:bg-gray-600"
+                      >
+                        <X className="w-3 h-3" />
+                        Cancel
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Buy Price:</span>
-                    <span className="font-medium">{formatCurrency(stock.buy_price)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Total Value:</span>
-                    <span className="font-medium">{formatCurrency(stock.totalValue || 0)}</span>
-                  </div>
-                  
-                  <div className="pt-3 border-t border-gray-200">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-600">Total Return:</span>
-                      <div className="flex items-center gap-1">
-                        {(stock.totalReturn || 0) >= 0 ? (
-                          <TrendingUp className="w-4 h-4 text-green-500" />
-                        ) : (
-                          <TrendingDown className="w-4 h-4 text-red-500" />
-                        )}
-                        <span className={`font-bold ${(stock.totalReturn || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          {formatPercentage(stock.totalReturn || 0)}
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">Current Price:</span>
+                      <span className="font-medium">{formatCurrency(stock.currentPrice || 0)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">Buy Price:</span>
+                      <span className="font-medium">{formatCurrency(stock.buy_price)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">Total Value:</span>
+                      <span className="font-medium">{formatCurrency(stock.totalValue || 0)}</span>
+                    </div>
+                    
+                    <div className="pt-3 border-t border-gray-200">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-600">Total Return:</span>
+                        <div className="flex items-center gap-1">
+                          {(stock.totalReturn || 0) >= 0 ? (
+                            <TrendingUp className="w-4 h-4 text-green-500" />
+                          ) : (
+                            <TrendingDown className="w-4 h-4 text-red-500" />
+                          )}
+                          <span className={`font-bold ${(stock.totalReturn || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {formatPercentage(stock.totalReturn || 0)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex justify-between items-center mt-1">
+                        <span className="text-sm text-gray-600">CAGR:</span>
+                        <span className={`font-bold ${(stock.cagr || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {formatPercentage(stock.cagr || 0)}
                         </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Buy Price</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Price</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Value</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Return</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">CAGR</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Purchase Date</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {filteredAndSortedStocks.map((stock) => (
+                    <tr key={stock.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="font-medium text-gray-900">{stock.ticker}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">{stock.quantity}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">{formatCurrency(stock.buy_price)}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">{formatCurrency(stock.currentPrice || 0)}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">{formatCurrency(stock.totalValue || 0)}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-1">
+                          {(stock.totalReturn || 0) >= 0 ? (
+                            <TrendingUp className="w-4 h-4 text-green-500" />
+                          ) : (
+                            <TrendingDown className="w-4 h-4 text-red-500" />
+                          )}
+                          <span className={`text-sm font-medium ${(stock.totalReturn || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {formatPercentage(stock.totalReturn || 0)}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`text-sm font-medium ${(stock.cagr || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {formatPercentage(stock.cagr || 0)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">{format(stock.purchaseDate, 'MMM dd, yyyy')}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => startEdit(stock)}
+                            className="text-blue-600 hover:text-blue-900"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => removeStock(stock.id!)}
+                            className="text-red-600 hover:text-red-900"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
+      )}
+
+      {/* Edit Modal for List View */}
+      {editingStock && editForm && viewMode === 'list' && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-semibold mb-4">Edit {editForm.ticker}</h3>
+            
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Ticker</label>
+                  <input
+                    type="text"
+                    value={editForm.ticker}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, ticker: e.target.value.toUpperCase() }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+                  <input
+                    type="number"
+                    value={editForm.quantity}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, quantity: Number(e.target.value) }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Buy Price</label>
+                  <input
+                    type="number"
+                    value={editForm.buyPrice}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, buyPrice: Number(e.target.value) }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                    step="0.01"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Current Price</label>
+                  <input
+                    type="number"
+                    value={editForm.currentPrice}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, currentPrice: Number(e.target.value) }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                    step="0.01"
+                  />
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Purchase Date</label>
+                <input
+                  type="date"
+                  value={editForm.purchaseDate}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, purchaseDate: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={saveEdit}
+                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+              >
+                Save Changes
+              </button>
+              <button
+                onClick={cancelEdit}
+                className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
                       </div>
                     </div>
                     <div className="flex justify-between items-center mt-1">
