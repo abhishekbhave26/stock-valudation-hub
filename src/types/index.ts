@@ -10,7 +10,6 @@ export interface DCFInputs {
   valuationMetric: 'P/S' | 'P/E' | 'P/FCF' | 'P/B' | 'P/OCF' | 'EV/Sales' | 'EV/EBITDA';
   valuationMultiple: number;
   baseMetricPerShare: number;
-  sharesOutstanding: number;
   desiredReturn: number;
   growthRates: number[];
 }
@@ -23,6 +22,7 @@ export interface DCFResults {
   fairValue: number;
   expectedReturn: number;
   cagr: number;
+  buyTargetPrice: number;
 }
 
 export interface SavedStock {

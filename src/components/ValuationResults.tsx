@@ -93,14 +93,87 @@ export default function ValuationResults({ results, warnings, ticker, dcfInputs,
           </div>
 
           <div className="text-center p-4 bg-white rounded-lg border border-gray-200">
-            <div className={`text-3xl font-bold ${getPerformanceColor(results.cagr, 'cagr')}`}>
-              {formatPercentage(results.cagr)}
+            <div className="text-3xl font-bold text-green-600">
+              {formatCurrency(results.buyTargetPrice)}
             </div>
-            <p className="text-sm text-gray-500">CAGR</p>
+            <p className="text-sm text-gray-500">Buy Target Price</p>
+            <p className="text-xs text-gray-400">For {formatPercentage(dcfInputs.desiredReturn)} return</p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 gap-6">
+          <div className="space-y-3">
+            <h4 className="text-lg font-medium text-gray-700">5-Year Projections</h4>
+            <div className="overflow-x-auto">
+              <table className="w-full border border-gray-200 rounded-lg">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Year</th>
+                    <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Metric Value</th>
+                    <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Projected Price</th>
+                    <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Growth Rate</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {results.projectedValues.map((value, index) => (
+                    <tr key={index} className="hover:bg-gray-50">
+                      <td className="px-4 py-2 text-sm font-medium text-gray-900">Year {index + 1}</td>
+                      <td className="px-4 py-2 text-sm text-gray-800">${value.toFixed(2)}</td>
+                      <td className="px-4 py-2 text-sm text-blue-600 font-medium">{formatCurrency(results.projectedPrices[index])}</td>
+                      <td className="px-4 py-2 text-sm text-gray-600">{formatPercentage(dcfInputs.growthRates[index])}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+          <div className="space-y-3">
+            <h4 className="text-lg font-medium text-gray-700">Performance Metrics</h4>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="text-center p-3 bg-white rounded border">
+                <div className={`text-xl font-bold ${getPerformanceColor(results.cagr, 'cagr')}`}>
+                  {formatPercentage(results.cagr)}
+                </div>
+                <p className="text-xs text-gray-500">CAGR</p>
+              </div>
+              <div className="text-center p-3 bg-white rounded border">
+                <div className="text-xl font-bold text-blue-600">
+                  {formatCurrency(results.terminalValue)}
+                </div>
+                <p className="text-xs text-gray-500">Terminal Value</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h4 className="text-lg font-medium text-gray-700">Valuation Summary</h4>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Current Price:</span>
+                <span className="font-medium">{formatCurrency(dcfInputs.currentPrice)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Fair Value:</span>
+                <span className="font-medium text-blue-600">{formatCurrency(results.fairValue)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Upside/Downside:</span>
+                <span className={`font-medium ${results.expectedReturn >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {formatPercentage(results.expectedReturn)}
+                </span>
+              </div>
+              <div className="flex justify-between border-t pt-2">
+                <span className="text-gray-600">Buy Target:</span>
+                <span className="font-medium text-green-600">{formatCurrency(results.buyTargetPrice)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="hidden">
           <div className="space-y-3">
             <h4 className="text-lg font-medium text-gray-700">5-Year Metric Projections</h4>
             <div className="grid grid-cols-5 gap-2">
@@ -130,18 +203,6 @@ export default function ValuationResults({ results, warnings, ticker, dcfInputs,
           </div>
         </div>
 
-        <div className="pt-4 border-t border-gray-200 mt-6">
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-600">Terminal Value:</span>
-              <span className="font-medium">{formatCurrency(results.terminalValue)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Present Value:</span>
-              <span className="font-medium">{formatCurrency(results.presentValue)}</span>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );

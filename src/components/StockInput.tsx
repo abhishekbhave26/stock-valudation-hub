@@ -14,7 +14,6 @@ export default function StockInput({ onCalculate, loading }: StockInputProps) {
     valuationMetric: 'P/S' as const,
     valuationMultiple: 25,
     baseMetricPerShare: 0,
-    sharesOutstanding: 0,
     desiredReturn: 15,
     growthRates: [15, 12, 10, 8, 6]
   });
@@ -61,7 +60,7 @@ export default function StockInput({ onCalculate, loading }: StockInputProps) {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Information */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Ticker Symbol
@@ -96,6 +95,23 @@ export default function StockInput({ onCalculate, loading }: StockInputProps) {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
+              Desired Annual Return (%)
+            </label>
+            <input
+              type="number"
+              value={formData.desiredReturn}
+              onChange={(e) => handleInputChange('desiredReturn', parseFloat(e.target.value))}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="e.g., 15"
+              step="0.1"
+              required
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
               Valuation Metric
             </label>
             <select
@@ -128,7 +144,7 @@ export default function StockInput({ onCalculate, loading }: StockInputProps) {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Base Metric Per Share
+              Base Metric Per Share (Current Year)
             </label>
             <input
               type="number"
@@ -137,36 +153,6 @@ export default function StockInput({ onCalculate, loading }: StockInputProps) {
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               placeholder="e.g., 24.50"
               step="0.01"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Shares Outstanding
-            </label>
-            <input
-              type="number"
-              value={formData.sharesOutstanding || ''}
-              onChange={(e) => handleInputChange('sharesOutstanding', parseFloat(e.target.value))}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="e.g., 15500000000"
-              step="1"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Desired Annual Return (%)
-            </label>
-            <input
-              type="number"
-              value={formData.desiredReturn}
-              onChange={(e) => handleInputChange('desiredReturn', parseFloat(e.target.value))}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="e.g., 15"
-              step="0.1"
               required
             />
           </div>
