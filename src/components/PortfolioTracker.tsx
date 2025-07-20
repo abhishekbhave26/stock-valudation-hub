@@ -176,6 +176,32 @@ export default function PortfolioTracker() {
   const totalCost = portfolioStocks.reduce((sum, stock) => sum + (stock.buy_price * stock.quantity), 0);
   const totalReturn = totalCost > 0 ? (totalPortfolioValue - totalCost) / totalCost : 0;
 
+  // Calculate portfolio-wide CAGR
+  const portfolioCAGR = (() => {
+    if (portfolioStocks.length === 0 || totalCost === 0) return 0;
+    
+    // Calculate weighted average holding period
+    let totalWeightedYears = 0;
+    let totalWeight = 0;
+    
+    portfolioStocks.forEach(stock => {
+      const stockCost = stock.buy_price * stock.quantity;
+      const yearsDiff = (Date.now() - stock.purchaseDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+      
+      if (yearsDiff > 0) {
+        totalWeightedYears += yearsDiff * stockCost;
+        totalWeight += stockCost;
+      }
+    });
+    
+    const avgYears = totalWeight > 0 ? totalWeightedYears / totalWeight : 0;
+    
+    if (avgYears <= 0) return 0;
+    
+    // Calculate CAGR: (Ending Value / Beginning Value)^(1/years) - 1
+    return Math.pow(totalPortfolioValue / totalCost, 1 / avgYears) - 1;
+  })();
+
   // Prepare data for visualizations
   const pieChartData = portfolioStocks.map(stock => ({
     name: stock.ticker,
@@ -218,6 +244,16 @@ export default function PortfolioTracker() {
               {formatPercentage(totalReturn)}
             </div>
             <p className="text-sm text-gray-600">Total Return</p>
+          </div>
+        </div>
+        
+        <div className="mt-4">
+          <div className="text-center p-4 bg-purple-50 rounded-lg">
+            <div className={`text-2xl font-bold ${portfolioCAGR >= 0 ? 'text-purple-600' : 'text-red-600'}`}>
+              {formatPercentage(portfolioCAGR)}
+            </div>
+            <p className="text-sm text-gray-600">Portfolio CAGR</p>
+            <p className="text-xs text-gray-500 mt-1">Weighted by investment amount</p>
           </div>
         </div>
       </div>
