@@ -26,22 +26,17 @@ export default function StockWatchlist() {
 
       if (data) {
         const enrichedStocks: SavedStock[] = data.map(stock => {
-          // Use the current price from DCF inputs
+          // Use stored values from database
           const currentPrice = stock.current_price;
-          
-          // Get terminal value from DCF inputs
-          const terminalValue = stock.dcf_inputs?.projectedPrices?.[4] || 0;
-          
-          // Calculate total return from current price to terminal value
-          const totalReturn = currentPrice > 0 ? ((terminalValue - currentPrice) / currentPrice) * 100 : 0;
-          
-          // Calculate CAGR from current price to terminal value over 5 years
-          const cagr = currentPrice > 0 ? (Math.pow(terminalValue / currentPrice, 1/5) - 1) * 100 : 0;
+          const fairValue = stock.fair_value;
+          const expectedReturn = stock.expected_return;
+          const cagr = stock.cagr;
 
           return {
             ...stock,
             currentPrice,
-            totalReturn,
+            fairValue,
+            totalReturn: expectedReturn,
             cagr
           };
         });
