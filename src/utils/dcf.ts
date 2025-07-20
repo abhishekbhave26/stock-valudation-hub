@@ -61,7 +61,7 @@ export function calculateDCF(inputs: DCFInputs): {
   }
   
   const fairValue = presentValuePerShare;
-  const expectedReturn = ((fairValue / inputs.currentPrice) - 1) * 100;
+  const expectedReturn = (Math.pow(fairValue / inputs.currentPrice, 1/5) - 1) * 100;
   const cagr = (Math.pow(fairValue / inputs.currentPrice, 1/5) - 1) * 100;
   
   // Calculate buy target price to achieve desired return
