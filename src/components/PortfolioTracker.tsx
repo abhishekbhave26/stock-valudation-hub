@@ -4,7 +4,7 @@ import { PortfolioStock } from '../types';
 import { supabase } from '../lib/supabase';
 import { formatCurrency, formatPercentage } from '../utils/dcf';
 import { format } from 'date-fns';
-import { PieChart as RechartsPieChart, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+import { PieChart as RechartsPieChart, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Pie } from 'recharts';
 
 export default function PortfolioTracker() {
   const [portfolioStocks, setPortfolioStocks] = useState<PortfolioStock[]>([]);
@@ -474,42 +474,42 @@ export default function PortfolioTracker() {
                   </div>
                 </div>
               ) : (
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Current Price:</span>
-                  <span className="font-medium">{formatCurrency(stock.currentPrice || 0)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Buy Price:</span>
-                  <span className="font-medium">{formatCurrency(stock.buyPrice)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Total Value:</span>
-                  <span className="font-medium">{formatCurrency(stock.totalValue || 0)}</span>
-                </div>
-                
-                <div className="pt-3 border-t border-gray-200">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Total Return:</span>
-                    <div className="flex items-center gap-1">
-                      {(stock.totalReturn || 0) >= 0 ? (
-                        <TrendingUp className="w-4 h-4 text-green-500" />
-                      ) : (
-                        <TrendingDown className="w-4 h-4 text-red-500" />
-                      )}
-                      <span className={`font-bold ${(stock.totalReturn || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {formatPercentage(stock.totalReturn || 0)}
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-600">Current Price:</span>
+                    <span className="font-medium">{formatCurrency(stock.currentPrice || 0)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-600">Buy Price:</span>
+                    <span className="font-medium">{formatCurrency(stock.buyPrice)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-600">Total Value:</span>
+                    <span className="font-medium">{formatCurrency(stock.totalValue || 0)}</span>
+                  </div>
+                  
+                  <div className="pt-3 border-t border-gray-200">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-600">Total Return:</span>
+                      <div className="flex items-center gap-1">
+                        {(stock.totalReturn || 0) >= 0 ? (
+                          <TrendingUp className="w-4 h-4 text-green-500" />
+                        ) : (
+                          <TrendingDown className="w-4 h-4 text-red-500" />
+                        )}
+                        <span className={`font-bold ${(stock.totalReturn || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {formatPercentage(stock.totalReturn || 0)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex justify-between items-center mt-1">
+                      <span className="text-sm text-gray-600">CAGR:</span>
+                      <span className={`font-bold ${(stock.cagr || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {formatPercentage(stock.cagr || 0)}
                       </span>
                     </div>
                   </div>
-                  <div className="flex justify-between items-center mt-1">
-                    <span className="text-sm text-gray-600">CAGR:</span>
-                    <span className={`font-bold ${(stock.cagr || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {formatPercentage(stock.cagr || 0)}
-                    </span>
-                  </div>
                 </div>
-              </div>
               )}
             </div>
           ))}
@@ -517,3 +517,4 @@ export default function PortfolioTracker() {
       )}
     </div>
   );
+}
