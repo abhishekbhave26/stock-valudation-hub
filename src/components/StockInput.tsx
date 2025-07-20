@@ -11,7 +11,7 @@ const StockInput: React.FC<StockInputProps> = ({ onCalculate, loading }) => {
   const [formData, setFormData] = useState<StockInputData>({
     ticker: '',
     valuationMetric: 'P/S',
-    valuationMultiple: 15,
+    valuationMultiple: 25,
     baseMetricValue: 0,
     desiredReturn: 15,
     growthRates: {
@@ -108,7 +108,7 @@ const StockInput: React.FC<StockInputProps> = ({ onCalculate, loading }) => {
               value={formData.valuationMultiple}
               onChange={(e) => handleInputChange('valuationMultiple', parseFloat(e.target.value))}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="e.g., 15"
+              placeholder="e.g., 25"
               step="0.1"
               required
             />
