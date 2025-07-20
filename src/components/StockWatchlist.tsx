@@ -25,18 +25,25 @@ export default function StockWatchlist() {
       if (error) throw error;
 
       if (data) {
-        const enrichedStocks: SavedStock[] = data.map(stock => ({
-          id: stock.id,
-          ticker: stock.ticker,
-          currentPrice: stock.current_price,
-          fairValue: stock.fair_value,
-          expectedReturn: stock.expected_return,
-          cagr: stock.cagr,
-          buyTarget: stock.buy_target,
-          dcfInputs: stock.dcf_inputs,
-          createdAt: new Date(stock.created_at),
-          updatedAt: new Date(stock.updated_at)
-        }));
+        const enrichedStocks: SavedStock[] = data.map(stock => {
+          const currentPrice = prices[stock.ticker] || 0;
+          
+          // Get terminal value from DCF inputs
+          const terminalValue = stock.dcf_inputs?.projectedPrices?.[4] || 0;
+          
+          // Calculate total return from current price to terminal value
+          const totalReturn = stock.current_price > 0 ? ((terminalValue - stock.current_price) / stock.current_price) * 100 : 0;
+          
+          // Calculate CAGR from current price to terminal value over 5 years
+          const cagr = stock.current_price > 0 ? (Math.pow(terminalValue / stock.current_price, 1/5) - 1) * 100 : 0;
+
+          return {
+            ...stock,
+            currentPrice,
+            totalReturn,
+            cagr
+          };
+        });
         setStocks(enrichedStocks);
       }
     } catch (error) {
@@ -149,11 +156,10 @@ export default function StockWatchlist() {
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Price</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fair Value</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Target Prices</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Return</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">CAGR</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Buy Target</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fair Value</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
@@ -172,17 +178,12 @@ export default function StockWatchlist() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-blue-600">
-                        {formatCurrency(stock.fairValue)}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-xs space-y-1">
-                        {stock.dcfInputs.projectedPrices && (
+                        {stock.dcf_inputs?.projectedPrices && (
                           <>
-                            <div>1Y: {formatCurrency(stock.dcfInputs.projectedPrices[0] || 0)}</div>
-                            <div>3Y: {formatCurrency(stock.dcfInputs.projectedPrices[2] || 0)}</div>
-                            <div>5Y: {formatCurrency(stock.dcfInputs.projectedPrices[4] || 0)}</div>
+                            <div>1Y: {formatCurrency(stock.dcf_inputs.projectedPrices[0] || 0)}</div>
+                            <div>3Y: {formatCurrency(stock.dcf_inputs.projectedPrices[2] || 0)}</div>
+                            <div>5Y: {formatCurrency(stock.dcf_inputs.projectedPrices[4] || 0)}</div>
                           </>
                         )}
                       </div>
@@ -198,11 +199,8 @@ export default function StockWatchlist() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-1">
-                        <Target className="w-4 h-4 text-blue-500" />
-                        <span className="text-sm font-medium text-blue-600">
-                          {formatCurrency(stock.buyTarget)}
-                        </span>
+                      <div className="text-sm font-medium text-green-600">
+                        {formatCurrency(stock.fairValue)}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">

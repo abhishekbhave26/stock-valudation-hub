@@ -27,7 +27,7 @@ function App() {
           buy_target: stockData.buyTarget,
           dcf_inputs: {
             ...stockData.dcfInputs,
-            projectedPrices: stockData.projectedPrices
+            projectedPrices: stockData.results.projectedPrices
           }
         }]);
 
