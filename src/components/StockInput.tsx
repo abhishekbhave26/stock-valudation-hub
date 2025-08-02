@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Search, TrendingUp } from 'lucide-react';
+import { Search, TrendingUp, RefreshCw } from 'lucide-react';
 import { DCFInputs } from '../types';
+import { stockPriceService } from '../services/stockPriceService';
 
 interface StockInputProps {
   onCalculate: (data: DCFInputs) => void;
@@ -17,6 +18,7 @@ export default function StockInput({ onCalculate, loading }: StockInputProps) {
     desiredReturn: 15,
     growthRates: [15, 12, 10, 8, 6]
   });
+  const [fetchingPrice, setFetchingPrice] = useState(false);
 
   const handleInputChange = (field: keyof DCFInputs, value: any) => {
     setFormData(prev => ({
@@ -39,6 +41,24 @@ export default function StockInput({ onCalculate, loading }: StockInputProps) {
     onCalculate(formData);
   };
 
+  const handleFetchCurrentPrice = async () => {
+    if (!formData.ticker) return;
+    
+    setFetchingPrice(true);
+    try {
+      const priceData = await stockPriceService.getStockPrice(formData.ticker);
+      if (priceData) {
+        setFormData(prev => ({
+          ...prev,
+          currentPrice: priceData.price
+        }));
+      }
+    } catch (error) {
+      console.error('Failed to fetch current price:', error);
+    } finally {
+      setFetchingPrice(false);
+    }
+  };
   const valuationMetrics = [
     { value: 'P/S', label: 'Price-to-Sales (P/S)' },
     { value: 'P/E', label: 'Price-to-Earnings (P/E)' },
@@ -82,15 +102,26 @@ export default function StockInput({ onCalculate, loading }: StockInputProps) {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Current Price ($)
             </label>
-            <input
-              type="number"
-              value={formData.currentPrice || ''}
-              onChange={(e) => handleInputChange('currentPrice', parseFloat(e.target.value))}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="e.g., 150.00"
-              step="0.01"
-              required
-            />
+            <div className="relative">
+              <input
+                type="number"
+                value={formData.currentPrice || ''}
+                onChange={(e) => handleInputChange('currentPrice', parseFloat(e.target.value))}
+                className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="e.g., 150.00"
+                step="0.01"
+                required
+              />
+              <button
+                type="button"
+                onClick={handleFetchCurrentPrice}
+                disabled={!formData.ticker || fetchingPrice}
+                className="absolute right-2 top-1/2 transform -translate-y-1/2 p-2 text-gray-400 hover:text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Fetch current price"
+              >
+                <RefreshCw className={`w-4 h-4 ${fetchingPrice ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
           </div>
 
           <div>

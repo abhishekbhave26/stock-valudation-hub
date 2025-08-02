@@ -1,0 +1,187 @@
+interface StockPrice {
+  symbol: string;
+  price: number;
+  timestamp: number;
+  source: string;
+}
+
+interface CachedPrice {
+  price: number;
+  timestamp: number;
+  source: string;
+}
+
+class StockPriceService {
+  private cache: Map<string, CachedPrice> = new Map();
+  private readonly CACHE_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
+  private readonly API_KEY = import.meta.env.VITE_ALPHA_VANTAGE_API_KEY;
+  private readonly BASE_URL = 'https://www.alphavantage.co/query';
+  
+  // Rate limiting
+  private lastRequestTime = 0;
+  private readonly MIN_REQUEST_INTERVAL = 12000; // 12 seconds between requests (5 per minute limit)
+
+  constructor() {
+    // Load cache from localStorage on initialization
+    this.loadCacheFromStorage();
+  }
+
+  private loadCacheFromStorage() {
+    try {
+      const stored = localStorage.getItem('stockPriceCache');
+      if (stored) {
+        const data = JSON.parse(stored);
+        this.cache = new Map(Object.entries(data));
+      }
+    } catch (error) {
+      console.warn('Failed to load stock price cache from localStorage:', error);
+    }
+  }
+
+  private saveCacheToStorage() {
+    try {
+      const cacheObj = Object.fromEntries(this.cache);
+      localStorage.setItem('stockPriceCache', JSON.stringify(cacheObj));
+    } catch (error) {
+      console.warn('Failed to save stock price cache to localStorage:', error);
+    }
+  }
+
+  private isCacheValid(cachedPrice: CachedPrice): boolean {
+    const now = Date.now();
+    return (now - cachedPrice.timestamp) < this.CACHE_DURATION;
+  }
+
+  private async rateLimitedFetch(url: string): Promise<Response> {
+    const now = Date.now();
+    const timeSinceLastRequest = now - this.lastRequestTime;
+    
+    if (timeSinceLastRequest < this.MIN_REQUEST_INTERVAL) {
+      const waitTime = this.MIN_REQUEST_INTERVAL - timeSinceLastRequest;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+    
+    this.lastRequestTime = Date.now();
+    return fetch(url);
+  }
+
+  async getStockPrice(symbol: string): Promise<StockPrice | null> {
+    const normalizedSymbol = symbol.toUpperCase();
+    
+    // Check cache first
+    const cached = this.cache.get(normalizedSymbol);
+    if (cached && this.isCacheValid(cached)) {
+      return {
+        symbol: normalizedSymbol,
+        price: cached.price,
+        timestamp: cached.timestamp,
+        source: cached.source
+      };
+    }
+
+    // If no API key, return null
+    if (!this.API_KEY) {
+      console.warn('No Alpha Vantage API key provided. Add VITE_ALPHA_VANTAGE_API_KEY to your .env file');
+      return null;
+    }
+
+    try {
+      // Fetch from Alpha Vantage API
+      const url = `${this.BASE_URL}?function=GLOBAL_QUOTE&symbol=${normalizedSymbol}&apikey=${this.API_KEY}`;
+      
+      const response = await this.rateLimitedFetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Check for API errors
+      if (data['Error Message']) {
+        throw new Error(data['Error Message']);
+      }
+      
+      if (data['Note']) {
+        throw new Error('API call frequency limit reached. Please try again later.');
+      }
+      
+      const quote = data['Global Quote'];
+      if (!quote || !quote['05. price']) {
+        throw new Error('Invalid response format or symbol not found');
+      }
+      
+      const price = parseFloat(quote['05. price']);
+      const timestamp = Date.now();
+      
+      // Cache the result
+      const cachedPrice: CachedPrice = {
+        price,
+        timestamp,
+        source: 'Alpha Vantage'
+      };
+      
+      this.cache.set(normalizedSymbol, cachedPrice);
+      this.saveCacheToStorage();
+      
+      return {
+        symbol: normalizedSymbol,
+        price,
+        timestamp,
+        source: 'Alpha Vantage'
+      };
+      
+    } catch (error) {
+      console.error(`Failed to fetch price for ${normalizedSymbol}:`, error);
+      
+      // If we have expired cache data, return it as fallback
+      if (cached) {
+        console.warn(`Using expired cache data for ${normalizedSymbol}`);
+        return {
+          symbol: normalizedSymbol,
+          price: cached.price,
+          timestamp: cached.timestamp,
+          source: `${cached.source} (cached)`
+        };
+      }
+      
+      return null;
+    }
+  }
+
+  async getMultipleStockPrices(symbols: string[]): Promise<Map<string, StockPrice>> {
+    const results = new Map<string, StockPrice>();
+    
+    // Process symbols one by one to respect rate limits
+    for (const symbol of symbols) {
+      try {
+        const price = await this.getStockPrice(symbol);
+        if (price) {
+          results.set(symbol.toUpperCase(), price);
+        }
+      } catch (error) {
+        console.error(`Failed to fetch price for ${symbol}:`, error);
+      }
+    }
+    
+    return results;
+  }
+
+  clearCache() {
+    this.cache.clear();
+    localStorage.removeItem('stockPriceCache');
+  }
+
+  getCacheInfo(): { symbol: string; price: number; age: string; source: string }[] {
+    const now = Date.now();
+    return Array.from(this.cache.entries()).map(([symbol, cached]) => ({
+      symbol,
+      price: cached.price,
+      age: `${Math.round((now - cached.timestamp) / (1000 * 60))} minutes ago`,
+      source: cached.source
+    }));
+  }
+}
+
+export const stockPriceService = new StockPriceService();
+export type { StockPrice };

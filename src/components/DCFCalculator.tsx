@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, RefreshCw } from 'lucide-react';
 import StockInput from './StockInput';
 import ValuationResults from './ValuationResults';
 import { DCFInputs, DCFResults, ValidationWarning } from '../types';
 import { calculateDCF } from '../utils/dcf';
+import { stockPriceService } from '../services/stockPriceService';
 
 interface DCFCalculatorProps {
   onSaveStock?: (stockData: any) => void;
@@ -16,6 +17,7 @@ export default function DCFCalculator({ onSaveStock }: DCFCalculatorProps) {
   const [ticker, setTicker] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
+  const [fetchingPrice, setFetchingPrice] = useState(false);
 
   const handleCalculate = async (inputs: DCFInputs) => {
     setLoading(true);
@@ -38,6 +40,23 @@ export default function DCFCalculator({ onSaveStock }: DCFCalculatorProps) {
     }
   };
 
+  const handleFetchCurrentPrice = async (ticker: string): Promise<number | null> => {
+    if (!ticker) return null;
+    
+    setFetchingPrice(true);
+    try {
+      const priceData = await stockPriceService.getStockPrice(ticker);
+      if (priceData) {
+        return priceData.price;
+      }
+      return null;
+    } catch (error) {
+      console.error('Failed to fetch current price:', error);
+      return null;
+    } finally {
+      setFetchingPrice(false);
+    }
+  };
   return (
     <div className="space-y-6">
       <StockInput onCalculate={handleCalculate} loading={loading} />
@@ -61,6 +80,8 @@ export default function DCFCalculator({ onSaveStock }: DCFCalculatorProps) {
           ticker={ticker}
           dcfInputs={dcfInputs}
           onSaveStock={onSaveStock}
+          onFetchPrice={handleFetchCurrentPrice}
+          fetchingPrice={fetchingPrice}
         />
       )}
     </div>

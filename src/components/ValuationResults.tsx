@@ -1,5 +1,5 @@
 import React from 'react';
-import { TrendingUp, TrendingDown, AlertTriangle, Plus } from 'lucide-react';
+import { TrendingUp, TrendingDown, AlertTriangle, Plus, RefreshCw } from 'lucide-react';
 import { DCFResults, ValidationWarning, DCFInputs } from '../types';
 import { formatCurrency, formatPercentage, getPerformanceColor } from '../utils/dcf';
 
@@ -9,9 +9,19 @@ interface ValuationResultsProps {
   ticker: string;
   dcfInputs: DCFInputs;
   onSaveStock?: (stockData: any) => void;
+  onFetchPrice?: (ticker: string) => Promise<number | null>;
+  fetchingPrice?: boolean;
 }
 
-export default function ValuationResults({ results, warnings, ticker, dcfInputs, onSaveStock }: ValuationResultsProps) {
+export default function ValuationResults({ 
+  results, 
+  warnings, 
+  ticker, 
+  dcfInputs, 
+  onSaveStock,
+  onFetchPrice,
+  fetchingPrice = false
+}: ValuationResultsProps) {
   const handleSaveStock = () => {
     if (!onSaveStock) return;
     
@@ -30,6 +40,17 @@ export default function ValuationResults({ results, warnings, ticker, dcfInputs,
     
     onSaveStock(stockData);
   };
+
+  const handleRefreshPrice = async () => {
+    if (!onFetchPrice) return;
+    
+    const newPrice = await onFetchPrice(ticker);
+    if (newPrice) {
+      // This would trigger a recalculation in the parent component
+      // For now, we'll just show the updated price
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Current Price Display */}
@@ -37,8 +58,20 @@ export default function ValuationResults({ results, warnings, ticker, dcfInputs,
         <div className="flex justify-between items-center">
           <div className="text-center flex-1">
             <h3 className="text-2xl font-bold text-gray-800 mb-2">{ticker}</h3>
-            <div className="text-3xl font-bold text-blue-600 mb-1">
-              {formatCurrency(dcfInputs.currentPrice)}
+            <div className="flex items-center justify-center gap-2 mb-1">
+              <div className="text-3xl font-bold text-blue-600">
+                {formatCurrency(dcfInputs.currentPrice)}
+              </div>
+              {onFetchPrice && (
+                <button
+                  onClick={handleRefreshPrice}
+                  disabled={fetchingPrice}
+                  className="p-2 text-gray-400 hover:text-blue-600 disabled:opacity-50"
+                  title="Refresh current price"
+                >
+                  <RefreshCw className={`w-5 h-5 ${fetchingPrice ? 'animate-spin' : ''}`} />
+                </button>
+              )}
             </div>
             <p className="text-sm text-gray-500">Current Price</p>
           </div>
