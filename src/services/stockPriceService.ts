@@ -14,12 +14,12 @@ interface CachedPrice {
 class StockPriceService {
   private cache: Map<string, CachedPrice> = new Map();
   private readonly CACHE_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
-  private readonly API_KEY = import.meta.env.VITE_ALPHA_VANTAGE_API_KEY;
-  private readonly BASE_URL = 'https://www.alphavantage.co/query';
+  private readonly API_KEY = import.meta.env.VITE_FINNHUB_API_KEY;
+  private readonly BASE_URL = 'https://finnhub.io/api/v1';
   
-  // Rate limiting
+  // Rate limiting - Finnhub allows 60 calls/minute
   private lastRequestTime = 0;
-  private readonly MIN_REQUEST_INTERVAL = 12000; // 12 seconds between requests (5 per minute limit)
+  private readonly MIN_REQUEST_INTERVAL = 1000; // 1 second between requests (60 per minute)
 
   constructor() {
     // Load cache from localStorage on initialization
@@ -81,13 +81,13 @@ class StockPriceService {
 
     // If no API key, return null
     if (!this.API_KEY) {
-      console.warn('No Alpha Vantage API key provided. Add VITE_ALPHA_VANTAGE_API_KEY to your .env file');
+      console.warn('No Finnhub API key provided. Add VITE_FINNHUB_API_KEY to your .env file');
       return null;
     }
 
     try {
-      // Fetch from Alpha Vantage API
-      const url = `${this.BASE_URL}?function=GLOBAL_QUOTE&symbol=${normalizedSymbol}&apikey=${this.API_KEY}`;
+      // Fetch from Finnhub API
+      const url = `${this.BASE_URL}/quote?symbol=${normalizedSymbol}&token=${this.API_KEY}`;
       
       const response = await this.rateLimitedFetch(url);
       
@@ -98,27 +98,23 @@ class StockPriceService {
       const data = await response.json();
       
       // Check for API errors
-      if (data['Error Message']) {
-        throw new Error(data['Error Message']);
+      if (data.error) {
+        throw new Error(data.error);
       }
       
-      if (data['Note']) {
-        throw new Error('API call frequency limit reached. Please try again later.');
-      }
-      
-      const quote = data['Global Quote'];
-      if (!quote || !quote['05. price']) {
+      // Finnhub returns current price in 'c' field
+      if (!data.c || data.c === 0) {
         throw new Error('Invalid response format or symbol not found');
       }
       
-      const price = parseFloat(quote['05. price']);
+      const price = parseFloat(data.c);
       const timestamp = Date.now();
       
       // Cache the result
       const cachedPrice: CachedPrice = {
         price,
         timestamp,
-        source: 'Alpha Vantage'
+        source: 'Finnhub'
       };
       
       this.cache.set(normalizedSymbol, cachedPrice);
@@ -128,7 +124,7 @@ class StockPriceService {
         symbol: normalizedSymbol,
         price,
         timestamp,
-        source: 'Alpha Vantage'
+        source: 'Finnhub'
       };
       
     } catch (error) {

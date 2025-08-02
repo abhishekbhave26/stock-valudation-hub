@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, TrendingUp, TrendingDown, Wallet, Filter, Edit, Save, X, PieChart, Grid, List } from 'lucide-react';
+import { Plus, TrendingUp, TrendingDown, Wallet, Filter, Edit, Save, X, PieChart, Grid, List, RefreshCw } from 'lucide-react';
 import { PortfolioStock } from '../types';
 import { supabase } from '../lib/supabase';
 import { formatCurrency, formatPercentage } from '../utils/dcf';
 import { format } from 'date-fns';
 import { PieChart as RechartsPieChart, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Pie } from 'recharts';
+import { stockPriceService } from '../services/stockPriceService';
 
 export default function PortfolioTracker() {
   const [portfolioStocks, setPortfolioStocks] = useState<PortfolioStock[]>([]);
@@ -15,6 +16,7 @@ export default function PortfolioTracker() {
   const [viewMode, setViewMode] = useState<'tile' | 'list'>('tile');
   const [editingStock, setEditingStock] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<any>(null);
+  const [updatingPrices, setUpdatingPrices] = useState(false);
 
   const [newStock, setNewStock] = useState({
     ticker: '',
@@ -150,6 +152,58 @@ export default function PortfolioTracker() {
       loadPortfolio();
     } catch (error) {
       console.error('Error updating stock:', error);
+    }
+  };
+
+  const updateAllCurrentPrices = async () => {
+    if (portfolioStocks.length === 0) return;
+    
+    setUpdatingPrices(true);
+    try {
+      const symbols = [...new Set(portfolioStocks.map(stock => stock.ticker))];
+      const priceUpdates: { id: string; currentPrice: number }[] = [];
+      
+      // Fetch prices for all unique symbols
+      for (const symbol of symbols) {
+        try {
+          const priceData = await stockPriceService.getStockPrice(symbol);
+          if (priceData) {
+            // Find all stocks with this symbol and prepare updates
+            portfolioStocks
+              .filter(stock => stock.ticker === symbol)
+              .forEach(stock => {
+                priceUpdates.push({
+                  id: stock.id!,
+                  currentPrice: priceData.price
+                });
+              });
+          }
+        } catch (error) {
+          console.error(`Failed to fetch price for ${symbol}:`, error);
+        }
+      }
+      
+      // Update database with new prices
+      for (const update of priceUpdates) {
+        try {
+          const { error } = await supabase
+            .from('portfolio_stocks')
+            .update({ current_price: update.currentPrice })
+            .eq('id', update.id);
+          
+          if (error) throw error;
+        } catch (error) {
+          console.error(`Failed to update price for stock ${update.id}:`, error);
+        }
+      }
+      
+      // Reload portfolio to reflect changes
+      await loadPortfolio();
+      
+    } catch (error) {
+      console.error('Failed to update current prices:', error);
+    } finally {
+      setUpdatingPrices(false);
     }
   };
 
@@ -355,13 +409,25 @@ export default function PortfolioTracker() {
             </div>
           </div>
           
-          <button
-            onClick={() => setShowAddForm(!showAddForm)}
-            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Add Stock
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowAddForm(!showAddForm)}
+              className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Add Stock
+            </button>
+          
+            <button
+              onClick={updateAllCurrentPrices}
+              disabled={updatingPrices || portfolioStocks.length === 0}
+              className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              title="Update all current prices"
+            >
+              <RefreshCw className={`w-4 h-4 ${updatingPrices ? 'animate-spin' : ''}`} />
+              {updatingPrices ? 'Updating...' : 'Update Prices'}
+            </button>
+          </div>
         </div>
 
         {/* Add Stock Form */}
