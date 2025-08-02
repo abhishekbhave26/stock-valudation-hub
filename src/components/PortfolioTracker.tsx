@@ -33,6 +33,16 @@ export default function PortfolioTracker() {
   const loadPortfolio = async () => {
     setLoading(true);
     try {
+      // Check if Supabase is properly configured
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      
+      if (!supabaseUrl || !supabaseKey || supabaseUrl.includes('placeholder') || supabaseKey.includes('placeholder')) {
+        console.warn('Supabase not configured. Portfolio functionality will be limited.');
+        setPortfolioStocks([]);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('portfolio_stocks')
         .select('*')
