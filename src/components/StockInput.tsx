@@ -52,6 +52,8 @@ export default function StockInput({ onCalculate, loading }: StockInputProps) {
           ...prev,
           currentPrice: priceData.price
         }));
+      } else {
+        console.error('No price data received for', formData.ticker);
       }
     } catch (error) {
       console.error('Failed to fetch current price:', error);

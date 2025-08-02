@@ -159,15 +159,20 @@ export default function PortfolioTracker() {
     if (portfolioStocks.length === 0) return;
     
     setUpdatingPrices(true);
+    console.log('Starting price update for', portfolioStocks.length, 'stocks');
+    
     try {
       const symbols = [...new Set(portfolioStocks.map(stock => stock.ticker))];
+      console.log('Unique symbols to update:', symbols);
       const priceUpdates: { id: string; currentPrice: number }[] = [];
       
       // Fetch prices for all unique symbols
       for (const symbol of symbols) {
         try {
+          console.log('Fetching price for', symbol);
           const priceData = await stockPriceService.getStockPrice(symbol);
           if (priceData) {
+            console.log('Got price for', symbol, ':', priceData.price);
             // Find all stocks with this symbol and prepare updates
             portfolioStocks
               .filter(stock => stock.ticker === symbol)
@@ -177,11 +182,15 @@ export default function PortfolioTracker() {
                   currentPrice: priceData.price
                 });
               });
+          } else {
+            console.error('No price data received for', symbol);
           }
         } catch (error) {
           console.error(`Failed to fetch price for ${symbol}:`, error);
         }
       }
+      
+      console.log('Price updates to apply:', priceUpdates);
       
       // Update database with new prices
       for (const update of priceUpdates) {
@@ -191,7 +200,10 @@ export default function PortfolioTracker() {
             .update({ current_price: update.currentPrice })
             .eq('id', update.id);
           
-          if (error) throw error;
+          if (error) {
+            console.error('Database update error:', error);
+            throw error;
+          }
         } catch (error) {
           console.error(`Failed to update price for stock ${update.id}:`, error);
         }

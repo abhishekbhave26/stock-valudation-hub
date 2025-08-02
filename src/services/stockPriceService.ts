@@ -67,10 +67,12 @@ class StockPriceService {
 
   async getStockPrice(symbol: string): Promise<StockPrice | null> {
     const normalizedSymbol = symbol.toUpperCase();
+    console.log('Getting stock price for:', normalizedSymbol);
     
     // Check cache first
     const cached = this.cache.get(normalizedSymbol);
     if (cached && this.isCacheValid(cached)) {
+      console.log('Using cached price for', normalizedSymbol, ':', cached.price);
       return {
         symbol: normalizedSymbol,
         price: cached.price,
@@ -81,34 +83,44 @@ class StockPriceService {
 
     // If no API key, return null
     if (!this.API_KEY) {
-      console.warn('No Finnhub API key provided. Add VITE_FINNHUB_API_KEY to your .env file');
+      console.error('No Finnhub API key provided. Add VITE_FINNHUB_API_KEY to your .env file');
+      console.log('Current API_KEY value:', this.API_KEY ? 'Present' : 'Missing');
       return null;
     }
 
+    console.log('Fetching from Finnhub API for:', normalizedSymbol);
+    
     try {
       // Fetch from Finnhub API
       const url = `${this.BASE_URL}/quote?symbol=${normalizedSymbol}&token=${this.API_KEY}`;
+      console.log('API URL:', url.replace(this.API_KEY, 'HIDDEN_API_KEY'));
       
       const response = await this.rateLimitedFetch(url);
+      console.log('API Response status:', response.status);
       
       if (!response.ok) {
+        console.error('API response not ok:', response.status, response.statusText);
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       
       const data = await response.json();
+      console.log('API Response data:', data);
       
       // Check for API errors
       if (data.error) {
+        console.error('API returned error:', data.error);
         throw new Error(data.error);
       }
       
       // Finnhub returns current price in 'c' field
       if (!data.c || data.c === 0) {
+        console.error('Invalid price data:', data);
         throw new Error('Invalid response format or symbol not found');
       }
       
       const price = parseFloat(data.c);
       const timestamp = Date.now();
+      console.log('Successfully got price for', normalizedSymbol, ':', price);
       
       // Cache the result
       const cachedPrice: CachedPrice = {
