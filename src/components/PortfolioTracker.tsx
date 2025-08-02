@@ -33,16 +33,6 @@ export default function PortfolioTracker() {
   const loadPortfolio = async () => {
     setLoading(true);
     try {
-      // Check if Supabase is properly configured
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      
-      if (!supabaseUrl || !supabaseKey || supabaseUrl.includes('placeholder') || supabaseKey.includes('placeholder')) {
-        console.warn('Supabase not configured. Portfolio functionality will be limited.');
-        setPortfolioStocks([]);
-        return;
-      }
-
       const { data, error } = await supabase
         .from('portfolio_stocks')
         .select('*')
@@ -73,9 +63,19 @@ export default function PortfolioTracker() {
         });
 
         setPortfolioStocks(enrichedStocks);
+      } else {
+        setPortfolioStocks([]);
       }
     } catch (error) {
       console.error('Error loading portfolio:', error);
+      // Check if it's a connection error due to invalid Supabase config
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      
+      if (!supabaseUrl || !supabaseKey || supabaseUrl.includes('placeholder') || supabaseKey.includes('placeholder')) {
+        console.warn('Supabase not configured. Portfolio functionality will be limited.');
+      }
+      setPortfolioStocks([]);
     } finally {
       setLoading(false);
     }

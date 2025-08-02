@@ -21,16 +21,6 @@ export default function StockWatchlist() {
   const loadStocks = async () => {
     setLoading(true);
     try {
-      // Check if Supabase is properly configured
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      
-      if (!supabaseUrl || !supabaseKey || supabaseUrl.includes('placeholder') || supabaseKey.includes('placeholder')) {
-        console.warn('Supabase not configured. Watchlist functionality will be limited.');
-        setStocks([]);
-        return;
-      }
-
       const { data, error } = await supabase
         .from('saved_stocks')
         .select('*')
@@ -50,9 +40,19 @@ export default function StockWatchlist() {
           };
         });
         setStocks(enrichedStocks);
+      } else {
+        setStocks([]);
       }
     } catch (error) {
       console.error('Error loading stocks:', error);
+      // Check if it's a connection error due to invalid Supabase config
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      
+      if (!supabaseUrl || !supabaseKey || supabaseUrl.includes('placeholder') || supabaseKey.includes('placeholder')) {
+        console.warn('Supabase not configured. Watchlist functionality will be limited.');
+      }
+      setStocks([]);
     } finally {
       setLoading(false);
     }
