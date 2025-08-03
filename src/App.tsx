@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Calculator, Wallet, BarChart3, Eye, LogOut, User } from 'lucide-react';
+import { Calculator, Wallet, BarChart3, Eye, LogOut, User, Lock } from 'lucide-react';
 import DCFCalculator from './components/DCFCalculator';
 import PortfolioTracker from './components/PortfolioTracker';
 import StockWatchlist from './components/StockWatchlist';
