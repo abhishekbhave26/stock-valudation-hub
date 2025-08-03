@@ -63,6 +63,12 @@ export default function StockWatchlist() {
   };
 
   const deleteStock = async (id: string) => {
+    const stock = stocks.find(s => s.id === id);
+    if (!stock) return;
+    
+    const confirmed = window.confirm(`Are you sure you want to delete ${stock.ticker} from your watchlist?`);
+    if (!confirmed) return;
+    
     try {
       const { error } = await supabase
         .from('saved_stocks')

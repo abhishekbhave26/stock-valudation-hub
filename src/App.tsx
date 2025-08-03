@@ -121,8 +121,8 @@ function App() {
       <footer className="bg-white border-t border-gray-200 mt-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="text-center text-sm text-gray-500">
-            <p>Built with React, TypeScript, Tailwind CSS, and Supabase</p>
-            <p className="mt-1">Manual stock price input for accurate DCF analysis</p>
+            <p>Professional DCF valuation calculator with portfolio tracking</p>
+            <p className="mt-1">Built with React, TypeScript, Tailwind CSS, and Supabase</p>
           </div>
         </div>
       </footer>
