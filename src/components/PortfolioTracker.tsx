@@ -136,6 +136,12 @@ export default function PortfolioTracker() {
   };
 
   const removeStock = async (id: string) => {
+    const stock = portfolioStocks.find(s => s.id === id);
+    if (!stock) return;
+    
+    const confirmed = window.confirm(`Are you sure you want to delete ${stock.ticker} stock from portfolio?`);
+    if (!confirmed) return;
+    
     try {
       const { error } = await supabase
         .from('portfolio_stocks')
