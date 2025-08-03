@@ -183,6 +183,16 @@ export default function StockWatchlist() {
     }
   };
 
+  const getValuationStatus = (stock: SavedStock) => {
+    const currentPrice = stock.currentPrice;
+    const fairValue = stock.fairValue;
+    
+    if (currentPrice <= fairValue * 0.8) return { status: 'strong-buy', color: 'bg-green-600', text: 'Strong Buy' };
+    if (currentPrice <= fairValue) return { status: 'buy', color: 'bg-green-500', text: 'Buy' };
+    if (currentPrice <= fairValue * 1.2) return { status: 'hold', color: 'bg-yellow-500', text: 'Hold' };
+    return { status: 'overvalued', color: 'bg-red-600', text: 'Overvalued' };
+  };
+
   const filteredAndSortedStocks = stocks
     .filter(stock => {
       if (filterBy === 'undervalued') return stock.currentPrice < stock.fairValue;
@@ -206,16 +216,6 @@ export default function StockWatchlist() {
           return a.ticker.localeCompare(b.ticker);
       }
     });
-
-  const getValuationStatus = (stock: SavedStock) => {
-    const currentPrice = stock.currentPrice;
-    const fairValue = stock.fairValue;
-    
-    if (currentPrice <= fairValue * 0.8) return { status: 'strong-buy', color: 'bg-green-600', text: 'Strong Buy' };
-    if (currentPrice <= fairValue) return { status: 'buy', color: 'bg-green-500', text: 'Buy' };
-    if (currentPrice <= fairValue * 1.2) return { status: 'hold', color: 'bg-yellow-500', text: 'Hold' };
-    return { status: 'overvalued', color: 'bg-red-600', text: 'Overvalued' };
-  };
 
   if (loading) {
     return (
