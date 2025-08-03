@@ -87,7 +87,7 @@ function App() {
           cagr: stockData.cagr,
           buy_target: stockData.buyTarget,
           dcf_inputs: stockData.dcfInputs,
-          user_email: user?.email || 'abhishekbhave26@gmail.com'
+          user_email: user?.email
         }]);
         error = insertError;
       }

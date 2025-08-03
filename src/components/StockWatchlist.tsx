@@ -28,7 +28,7 @@ export default function StockWatchlist() {
       const { data, error } = await supabase
         .from('saved_stocks')
         .select('*')
-        .eq('user_email', user?.email || 'abhishekbhave26@gmail.com')
+        .eq('user_email', user?.email)
         .order('created_at', { ascending: false });
 
       if (error) throw error;

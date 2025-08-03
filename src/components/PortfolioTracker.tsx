@@ -39,7 +39,7 @@ export default function PortfolioTracker() {
       const { data, error } = await supabase
         .from('portfolio_stocks')
         .select('*')
-        .eq('user_email', user?.email || 'abhishekbhave26@gmail.com')
+        .eq('user_email', user?.email)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -120,7 +120,7 @@ export default function PortfolioTracker() {
           buy_price: newStock.buyPrice,
           purchase_date: newStock.purchaseDate,
           current_price: newStock.currentPrice,
-          user_email: user?.email || 'abhishekbhave26@gmail.com'
+          user_email: user?.email
         }]);
 
       if (error) throw error;
