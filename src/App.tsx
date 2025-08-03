@@ -4,13 +4,15 @@ import DCFCalculator from './components/DCFCalculator';
 import PortfolioTracker from './components/PortfolioTracker';
 import StockWatchlist from './components/StockWatchlist';
 import AuthForm from './components/AuthForm';
+import ChangePasswordForm from './components/ChangePasswordForm';
 import { useAuth } from './hooks/useAuth';
 import { supabase } from './lib/supabase';
 
 function App() {
-  const { user, loading: authLoading, error: authError, signIn, signUp, signOut } = useAuth();
+  const { user, loading: authLoading, error: authError, signIn, signUp, signOut, resetPassword, updatePassword } = useAuth();
   const [activeTab, setActiveTab] = useState<'watchlist' | 'dcf' | 'portfolio'>('watchlist');
   const [authFormLoading, setAuthFormLoading] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
 
   // Reset to watchlist tab when user changes
   React.useEffect(() => {
@@ -38,6 +40,26 @@ function App() {
       // Error is handled by useAuth hook
     } finally {
       setAuthFormLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async (email: string) => {
+    setAuthFormLoading(true);
+    try {
+      await resetPassword(email);
+    } catch (error) {
+      // Error is handled by useAuth hook
+    } finally {
+      setAuthFormLoading(false);
+    }
+  };
+
+  const handleChangePassword = async (newPassword: string) => {
+    try {
+      await updatePassword(newPassword);
+      setShowChangePassword(false);
+    } catch (error) {
+      // Error is handled by useAuth hook
     }
   };
 
@@ -141,7 +163,20 @@ function App() {
       <AuthForm
         onLogin={handleLogin}
         onSignUp={handleSignUp}
+        onForgotPassword={handleForgotPassword}
         loading={authFormLoading}
+        error={authError}
+      />
+    );
+  }
+
+  // Show change password form if requested
+  if (showChangePassword) {
+    return (
+      <ChangePasswordForm
+        onChangePassword={handleChangePassword}
+        onCancel={() => setShowChangePassword(false)}
+        loading={authLoading}
         error={authError}
       />
     );
@@ -167,6 +202,13 @@ function App() {
                 <User className="w-4 h-4" />
                 <span>{user.user_metadata?.username || user.email}</span>
               </div>
+              <button
+                onClick={() => setShowChangePassword(true)}
+                className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <Lock className="w-4 h-4" />
+                Change Password
+              </button>
               <button
                 onClick={handleLogout}
                 className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"

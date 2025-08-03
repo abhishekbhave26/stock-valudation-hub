@@ -89,6 +89,46 @@ export function useAuth() {
     }
   };
 
+  const resetPassword = async (email: string) => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+
+      if (error) throw error;
+      
+      return { success: true };
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred during password reset');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updatePassword = async (newPassword: string) => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword
+      });
+
+      if (error) throw error;
+      
+      return { success: true };
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred during password update');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return {
     user,
     loading,
@@ -96,5 +136,7 @@ export function useAuth() {
     signIn,
     signUp,
     signOut,
+    resetPassword,
+    updatePassword,
   };
 }
