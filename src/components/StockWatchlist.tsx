@@ -52,8 +52,11 @@ export default function StockWatchlist() {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
       
-      if (!supabaseUrl || !supabaseKey || supabaseUrl.includes('placeholder') || supabaseKey.includes('placeholder')) {
-        console.warn('Supabase not configured. Watchlist functionality will be limited.');
+      if (!supabaseUrl || !supabaseKey || 
+          supabaseUrl.includes('placeholder') || supabaseKey.includes('placeholder') ||
+          supabaseUrl === 'your_supabase_url_here' || supabaseKey === 'your_supabase_anon_key_here') {
+        console.warn('Supabase not configured properly. Please update your .env file with valid Supabase credentials.');
+        alert('Supabase is not configured. Please check the console for setup instructions and update your .env file.');
       }
       
       setStocks([]);
