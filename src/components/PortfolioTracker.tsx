@@ -21,6 +21,8 @@ export default function PortfolioTracker() {
   const [updatingPrices, setUpdatingPrices] = useState(false);
   const [fetchingNewStockPrice, setFetchingNewStockPrice] = useState(false);
 
+  const PORTFOLIO_LIMIT = 100;
+
   const [newStock, setNewStock] = useState({
     ticker: '',
     quantity: 0,
@@ -115,6 +117,12 @@ export default function PortfolioTracker() {
 
   const addStock = async () => {
     if (!newStock.ticker || newStock.quantity <= 0 || newStock.buyPrice <= 0 || newStock.currentPrice <= 0) return;
+
+    // Check portfolio limit before adding
+    if (portfolioStocks.length >= PORTFOLIO_LIMIT) {
+      alert(`You've reached the maximum limit of ${PORTFOLIO_LIMIT} stocks in your portfolio. Please remove some stocks before adding new ones.`);
+      return;
+    }
 
     try {
       const { error } = await supabase
@@ -347,7 +355,7 @@ export default function PortfolioTracker() {
             <div className="text-2xl font-bold text-gray-800">
               {portfolioStocks.length}
             </div>
-            <p className="text-sm text-gray-600">Total Stocks</p>
+            <p className="text-sm text-gray-600">Total Stocks ({portfolioStocks.length}/{PORTFOLIO_LIMIT})</p>
           </div>
           <div className="text-center p-4 bg-blue-50 rounded-lg">
             <div className="text-2xl font-bold text-blue-600">

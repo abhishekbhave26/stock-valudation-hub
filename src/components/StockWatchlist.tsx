@@ -18,6 +18,8 @@ export default function StockWatchlist() {
   const [editForm, setEditForm] = useState<DCFInputs | null>(null);
   const [updatingPrices, setUpdatingPrices] = useState(false);
 
+  const WATCHLIST_LIMIT = 200;
+
   useEffect(() => {
     loadStocks();
   }, [user]);
@@ -354,7 +356,7 @@ export default function StockWatchlist() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h2 className="text-xl font-semibold text-gray-800 mb-1">Stock Watchlist</h2>
-            <p className="text-sm text-gray-500">{stocks.length} stocks tracked</p>
+            <p className="text-sm text-gray-500">{stocks.length}/{WATCHLIST_LIMIT} stocks tracked</p>
           </div>
           
           <div className="flex items-center gap-4">

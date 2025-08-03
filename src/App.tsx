@@ -57,14 +57,26 @@ function App() {
 
   const handleSaveStock = async (stockData: any) => {
     try {
+      // Check watchlist limit before saving
+      const { data: existingStocks, error: countError } = await supabase
+        .from('saved_stocks')
+        .select('id', { count: 'exact' })
+        .eq('user_email', user?.email);
+
+      if (countError) throw countError;
+
+      const currentCount = existingStocks?.length || 0;
+      const WATCHLIST_LIMIT = 200;
+
       // First check if stock already exists
-      const { data: existingStocks } = await supabase
+      const { data: duplicateCheck } = await supabase
         .from('saved_stocks')
         .select('id')
         .eq('ticker', stockData.ticker)
+        .eq('user_email', user?.email)
         .limit(1);
 
-      const existingStock = existingStocks && existingStocks.length > 0 ? existingStocks[0] : null;
+      const existingStock = duplicateCheck && duplicateCheck.length > 0 ? duplicateCheck[0] : null;
 
       let error;
       if (existingStock) {
@@ -83,6 +95,12 @@ function App() {
           .eq('id', existingStock.id);
         error = updateError;
       } else {
+        // Check if adding new stock would exceed limit
+        if (currentCount >= WATCHLIST_LIMIT) {
+          alert(`You've reached the maximum limit of ${WATCHLIST_LIMIT} stocks in your watchlist. Please remove some stocks before adding new ones.`);
+          return;
+        }
+
         // Insert new stock
         const { error: insertError } = await supabase
         .from('saved_stocks')
