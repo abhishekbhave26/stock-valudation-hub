@@ -6,8 +6,10 @@ import { formatCurrency, formatPercentage } from '../utils/dcf';
 import { format } from 'date-fns';
 import { PieChart as RechartsPieChart, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Pie } from 'recharts';
 import { stockPriceService } from '../services/stockPriceService';
+import { useAuth } from '../hooks/useAuth';
 
 export default function PortfolioTracker() {
+  const { user } = useAuth();
   const [portfolioStocks, setPortfolioStocks] = useState<PortfolioStock[]>([]);
   const [loading, setLoading] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -37,6 +39,7 @@ export default function PortfolioTracker() {
       const { data, error } = await supabase
         .from('portfolio_stocks')
         .select('*')
+        .eq('user_email', user?.email || 'abhishekbhave26@gmail.com')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -116,7 +119,8 @@ export default function PortfolioTracker() {
           quantity: newStock.quantity,
           buy_price: newStock.buyPrice,
           purchase_date: newStock.purchaseDate,
-          current_price: newStock.currentPrice
+          current_price: newStock.currentPrice,
+          user_email: user?.email || 'abhishekbhave26@gmail.com'
         }]);
 
       if (error) throw error;

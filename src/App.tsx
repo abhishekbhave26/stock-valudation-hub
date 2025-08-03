@@ -1,12 +1,46 @@
 import React, { useState } from 'react';
-import { Calculator, Wallet, BarChart3, Eye } from 'lucide-react';
+import { Calculator, Wallet, BarChart3, Eye, LogOut, User } from 'lucide-react';
 import DCFCalculator from './components/DCFCalculator';
 import PortfolioTracker from './components/PortfolioTracker';
 import StockWatchlist from './components/StockWatchlist';
+import AuthForm from './components/AuthForm';
+import { useAuth } from './hooks/useAuth';
 import { supabase } from './lib/supabase';
 
 function App() {
+  const { user, loading: authLoading, error: authError, signIn, signUp, signOut } = useAuth();
   const [activeTab, setActiveTab] = useState<'watchlist' | 'dcf' | 'portfolio'>('watchlist');
+  const [authFormLoading, setAuthFormLoading] = useState(false);
+
+  const handleLogin = async (email: string, password: string) => {
+    setAuthFormLoading(true);
+    try {
+      await signIn(email, password);
+    } catch (error) {
+      // Error is handled by useAuth hook
+    } finally {
+      setAuthFormLoading(false);
+    }
+  };
+
+  const handleSignUp = async (email: string, password: string, username: string) => {
+    setAuthFormLoading(true);
+    try {
+      await signUp(email, password, username);
+    } catch (error) {
+      // Error is handled by useAuth hook
+    } finally {
+      setAuthFormLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
 
   const tabs = [
     { id: 'watchlist', label: 'Stock Watchlist', icon: Eye },
@@ -52,7 +86,8 @@ function App() {
           expected_return: stockData.expectedReturn,
           cagr: stockData.cagr,
           buy_target: stockData.buyTarget,
-          dcf_inputs: stockData.dcfInputs
+          dcf_inputs: stockData.dcfInputs,
+          user_email: user?.email || 'abhishekbhave26@gmail.com'
         }]);
         error = insertError;
       }
@@ -65,6 +100,27 @@ function App() {
       console.error('Error saving stock:', error);
     }
   };
+
+  // Show loading spinner while checking auth
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  // Show auth form if not logged in
+  if (!user) {
+    return (
+      <AuthForm
+        onLogin={handleLogin}
+        onSignUp={handleSignUp}
+        loading={authFormLoading}
+        error={authError}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -81,6 +137,18 @@ function App() {
                 <p className="text-sm text-gray-500">DCF Analysis & Portfolio Tracking</p>
               </div>
             </div>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <User className="w-4 h-4" />
+                <span>{user.user_metadata?.username || user.email}</span>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+                Logout
+              </button>
           </div>
         </div>
       </header>

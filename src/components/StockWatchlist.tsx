@@ -6,8 +6,10 @@ import { formatCurrency, formatPercentage, getPerformanceColor } from '../utils/
 import { DCFInputs } from '../types';
 import { calculateDCF } from '../utils/dcf';
 import { stockPriceService } from '../services/stockPriceService';
+import { useAuth } from '../hooks/useAuth';
 
 export default function StockWatchlist() {
+  const { user } = useAuth();
   const [stocks, setStocks] = useState<SavedStock[]>([]);
   const [loading, setLoading] = useState(false);
   const [sortBy, setSortBy] = useState<'ticker' | 'expectedReturn' | 'cagr' | 'buyTarget' | 'status'>('ticker');
@@ -26,6 +28,7 @@ export default function StockWatchlist() {
       const { data, error } = await supabase
         .from('saved_stocks')
         .select('*')
+        .eq('user_email', user?.email || 'abhishekbhave26@gmail.com')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
