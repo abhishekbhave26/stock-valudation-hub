@@ -11,7 +11,7 @@ export default function PortfolioTracker() {
   const [portfolioStocks, setPortfolioStocks] = useState<PortfolioStock[]>([]);
   const [loading, setLoading] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [sortBy, setSortBy] = useState<'ticker' | 'totalReturn' | 'cagr' | 'totalValue'>('ticker');
+  const [sortBy, setSortBy] = useState<'ticker' | 'totalReturn' | 'cagr' | 'totalValue' | 'purchaseDate'>('ticker');
   const [filterBy, setFilterBy] = useState<'all' | 'positive' | 'negative'>('all');
   const [viewMode, setViewMode] = useState<'tile' | 'list'>('tile');
   const [editingStock, setEditingStock] = useState<string | null>(null);
@@ -267,6 +267,8 @@ export default function PortfolioTracker() {
           return (b.cagr || 0) - (a.cagr || 0);
         case 'totalValue':
           return (b.totalValue || 0) - (a.totalValue || 0);
+        case 'purchaseDate':
+          return b.purchaseDate.getTime() - a.purchaseDate.getTime();
         default:
           return a.ticker.localeCompare(b.ticker);
       }
@@ -325,7 +327,13 @@ export default function PortfolioTracker() {
           <h2 className="text-xl font-semibold text-gray-800">Portfolio Summary</h2>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="text-center p-4 bg-gray-50 rounded-lg">
+            <div className="text-2xl font-bold text-gray-800">
+              {portfolioStocks.length}
+            </div>
+            <p className="text-sm text-gray-600">Total Stocks</p>
+          </div>
           <div className="text-center p-4 bg-blue-50 rounded-lg">
             <div className="text-2xl font-bold text-blue-600">
               {formatCurrency(totalPortfolioValue)}
@@ -437,6 +445,7 @@ export default function PortfolioTracker() {
               <option value="all">All Stocks</option>
               <option value="positive">Profitable</option>
               <option value="negative">Losing</option>
+              <option value="purchaseDate">Sort by Purchase Date</option>
             </select>
             
             <div className="flex items-center gap-1 border border-gray-300 rounded">
