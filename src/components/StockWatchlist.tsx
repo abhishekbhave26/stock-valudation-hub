@@ -10,7 +10,7 @@ import { stockPriceService } from '../services/stockPriceService';
 export default function StockWatchlist() {
   const [stocks, setStocks] = useState<SavedStock[]>([]);
   const [loading, setLoading] = useState(false);
-  const [sortBy, setSortBy] = useState<'ticker' | 'expectedReturn' | 'cagr' | 'buyTarget'>('ticker');
+  const [sortBy, setSortBy] = useState<'ticker' | 'expectedReturn' | 'cagr' | 'buyTarget' | 'status'>('ticker');
   const [filterBy, setFilterBy] = useState<'all' | 'undervalued' | 'overvalued'>('all');
   const [editingStock, setEditingStock] = useState<SavedStock | null>(null);
   const [editForm, setEditForm] = useState<DCFInputs | null>(null);
@@ -197,6 +197,11 @@ export default function StockWatchlist() {
           return b.cagr - a.cagr;
         case 'buyTarget':
           return a.buyTarget - b.buyTarget;
+        case 'status':
+          const statusOrder = { 'strong-buy': 0, 'buy': 1, 'hold': 2, 'overvalued': 3 };
+          const aStatus = getValuationStatus(a).status;
+          const bStatus = getValuationStatus(b).status;
+          return statusOrder[aStatus] - statusOrder[bStatus];
         default:
           return a.ticker.localeCompare(b.ticker);
       }
@@ -355,6 +360,7 @@ export default function StockWatchlist() {
               <option value="expectedReturn">Sort by Expected Return</option>
               <option value="cagr">Sort by CAGR</option>
               <option value="buyTarget">Sort by Buy Target</option>
+              <option value="status">Sort by Status</option>
             </select>
             
             <select
