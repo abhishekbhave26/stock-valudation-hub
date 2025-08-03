@@ -1,5 +1,6 @@
 import React from 'react';
 import { TrendingUp, TrendingDown, AlertTriangle, Plus, RefreshCw } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from 'recharts';
 import { DCFResults, ValidationWarning, DCFInputs } from '../types';
 import { formatCurrency, formatPercentage, getPerformanceColor } from '../utils/dcf';
 
@@ -51,6 +52,37 @@ export default function ValuationResults({
     }
   };
 
+  // Prepare data for visualizations
+  const currentYear = new Date().getFullYear();
+  const projectionData = results.projectedPrices.map((price, index) => ({
+    year: currentYear + index + 1,
+    projectedPrice: price,
+    growthRate: dcfInputs.growthRates[index],
+    metricValue: results.projectedValues[index]
+  }));
+
+  const comparisonData = [
+    {
+      name: 'Current Price',
+      value: dcfInputs.currentPrice,
+      color: '#6B7280'
+    },
+    {
+      name: 'Fair Value',
+      value: results.fairValue,
+      color: '#3B82F6'
+    },
+    {
+      name: 'Buy Target',
+      value: results.buyTargetPrice,
+      color: '#10B981'
+    },
+    {
+      name: '5Y Target',
+      value: results.projectedPrices[4],
+      color: '#8B5CF6'
+    }
+  ];
   return (
     <div className="space-y-6">
       {/* Current Price Display */}
@@ -105,6 +137,75 @@ export default function ValuationResults({
           </div>
         </div>
       )}
+
+      {/* Visualizations */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Price Projections Chart */}
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <h3 className="text-lg font-semibold text-gray-800 mb-4">5-Year Price Projections</h3>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={projectionData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="year" />
+                <YAxis tickFormatter={(value) => `$${value.toFixed(0)}`} />
+                <Tooltip 
+                  formatter={(value, name) => [
+                    name === 'projectedPrice' ? formatCurrency(value as number) : `${value}%`,
+                    name === 'projectedPrice' ? 'Projected Price' : 'Growth Rate'
+                  ]}
+                />
+                <Legend />
+                <Line 
+                  type="monotone" 
+                  dataKey="projectedPrice" 
+                  stroke="#3B82F6" 
+                  strokeWidth={3}
+                  name="Projected Price"
+                  dot={{ fill: '#3B82F6', strokeWidth: 2, r: 4 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Price Comparison Chart */}
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <h3 className="text-lg font-semibold text-gray-800 mb-4">Price Comparison</h3>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={comparisonData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis tickFormatter={(value) => `$${value.toFixed(0)}`} />
+                <Tooltip formatter={(value) => formatCurrency(value as number)} />
+                <Bar dataKey="value" fill="#3B82F6">
+                  {comparisonData.map((entry, index) => (
+                    <Bar key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      {/* Growth Rate Visualization */}
+      <div className="bg-white rounded-xl shadow-lg p-6">
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">Growth Rate Projections</h3>
+        <div className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={projectionData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="year" />
+              <YAxis tickFormatter={(value) => `${value}%`} />
+              <Tooltip formatter={(value) => `${value}%`} />
+              <Legend />
+              <Bar dataKey="growthRate" fill="#10B981" name="Growth Rate %" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
 
       {/* DCF Results */}
       <div className="bg-white rounded-xl shadow-lg border-2 border-blue-500 bg-blue-50 p-6">

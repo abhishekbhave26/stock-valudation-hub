@@ -13,7 +13,7 @@ export default function PortfolioTracker() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [sortBy, setSortBy] = useState<'ticker' | 'totalReturn' | 'cagr' | 'totalValue' | 'purchaseDate'>('ticker');
   const [filterBy, setFilterBy] = useState<'all' | 'positive' | 'negative'>('all');
-  const [viewMode, setViewMode] = useState<'tile' | 'list'>('tile');
+  const [viewMode, setViewMode] = useState<'tile' | 'list'>('list');
   const [editingStock, setEditingStock] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<any>(null);
   const [updatingPrices, setUpdatingPrices] = useState(false);
