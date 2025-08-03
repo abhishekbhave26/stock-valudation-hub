@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, Trash2, BarChart3, Edit } from 'lucide-react';
+import { TrendingUp, TrendingDown, Trash2, BarChart3, Edit, RefreshCw } from 'lucide-react';
 import { SavedStock } from '../types';
 import { supabase } from '../lib/supabase';
 import { formatCurrency, formatPercentage, getPerformanceColor } from '../utils/dcf';
 import { DCFInputs } from '../types';
 import { calculateDCF } from '../utils/dcf';
+import { stockPriceService } from '../services/stockPriceService';
 
 export default function StockWatchlist() {
   const [stocks, setStocks] = useState<SavedStock[]>([]);
@@ -13,6 +14,7 @@ export default function StockWatchlist() {
   const [filterBy, setFilterBy] = useState<'all' | 'undervalued' | 'overvalued'>('all');
   const [editingStock, setEditingStock] = useState<SavedStock | null>(null);
   const [editForm, setEditForm] = useState<DCFInputs | null>(null);
+  const [updatingPrices, setUpdatingPrices] = useState(false);
 
   useEffect(() => {
     loadStocks();
@@ -114,6 +116,70 @@ export default function StockWatchlist() {
       loadStocks();
     } catch (error) {
       console.error('Error updating stock:', error);
+    }
+  };
+
+  const updateAllCurrentPrices = async () => {
+    if (stocks.length === 0) return;
+    
+    setUpdatingPrices(true);
+    console.log('Starting price update for', stocks.length, 'stocks');
+    
+    try {
+      const symbols = [...new Set(stocks.map(stock => stock.ticker))];
+      console.log('Unique symbols to update:', symbols);
+      const priceUpdates: { id: string; currentPrice: number }[] = [];
+      
+      // Fetch prices for all unique symbols
+      for (const symbol of symbols) {
+        try {
+          console.log('Fetching price for', symbol);
+          const priceData = await stockPriceService.getStockPrice(symbol);
+          if (priceData) {
+            console.log('Got price for', symbol, ':', priceData.price);
+            // Find all stocks with this symbol and prepare updates
+            stocks
+              .filter(stock => stock.ticker === symbol)
+              .forEach(stock => {
+                priceUpdates.push({
+                  id: stock.id!,
+                  currentPrice: priceData.price
+                });
+              });
+          } else {
+            console.error('No price data received for', symbol);
+          }
+        } catch (error) {
+          console.error(`Failed to fetch price for ${symbol}:`, error);
+        }
+      }
+      
+      console.log('Price updates to apply:', priceUpdates);
+      
+      // Update database with new prices
+      for (const update of priceUpdates) {
+        try {
+          const { error } = await supabase
+            .from('saved_stocks')
+            .update({ current_price: update.currentPrice })
+            .eq('id', update.id);
+          
+          if (error) {
+            console.error('Database update error:', error);
+            throw error;
+          }
+        } catch (error) {
+          console.error(`Failed to update price for stock ${update.id}:`, error);
+        }
+      }
+      
+      // Reload watchlist to reflect changes
+      await loadStocks();
+      
+    } catch (error) {
+      console.error('Failed to update current prices:', error);
+    } finally {
+      setUpdatingPrices(false);
     }
   };
 
@@ -270,6 +336,16 @@ export default function StockWatchlist() {
           </div>
           
           <div className="flex items-center gap-4">
+            <button
+              onClick={updateAllCurrentPrices}
+              disabled={updatingPrices || stocks.length === 0}
+              className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              title="Update all current prices"
+            >
+              <RefreshCw className={`w-4 h-4 ${updatingPrices ? 'animate-spin' : ''}`} />
+              {updatingPrices ? 'Updating...' : 'Update Prices'}
+            </button>
+            
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as typeof sortBy)}

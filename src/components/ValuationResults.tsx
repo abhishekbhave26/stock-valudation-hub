@@ -138,58 +138,6 @@ export default function ValuationResults({
         </div>
       )}
 
-      {/* Visualizations */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Price Projections Chart */}
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">5-Year Price Projections</h3>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={projectionData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="year" />
-                <YAxis tickFormatter={(value) => `$${value.toFixed(0)}`} />
-                <Tooltip 
-                  formatter={(value, name) => [
-                    name === 'projectedPrice' ? formatCurrency(value as number) : `${value}%`,
-                    name === 'projectedPrice' ? 'Projected Price' : 'Growth Rate'
-                  ]}
-                />
-                <Legend />
-                <Line 
-                  type="monotone" 
-                  dataKey="projectedPrice" 
-                  stroke="#3B82F6" 
-                  strokeWidth={3}
-                  name="Projected Price"
-                  dot={{ fill: '#3B82F6', strokeWidth: 2, r: 4 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Price Comparison Chart */}
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">Price Comparison</h3>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={comparisonData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis tickFormatter={(value) => `$${value.toFixed(0)}`} />
-                <Tooltip formatter={(value) => formatCurrency(value as number)} />
-                <Bar dataKey="value" fill="#3B82F6">
-                  {comparisonData.map((entry, index) => (
-                    <Bar key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
-
       {/* Growth Rate Visualization */}
       <div className="bg-white rounded-xl shadow-lg p-6">
         <h3 className="text-lg font-semibold text-gray-800 mb-4">Growth Rate Projections</h3>
