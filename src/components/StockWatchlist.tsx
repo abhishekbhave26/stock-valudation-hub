@@ -20,15 +20,20 @@ export default function StockWatchlist() {
 
   useEffect(() => {
     loadStocks();
-  }, []);
+  }, [user]);
 
   const loadStocks = async () => {
+    if (!user?.email) {
+      setStocks([]);
+      return;
+    }
+    
     setLoading(true);
     try {
       const { data, error } = await supabase
         .from('saved_stocks')
         .select('*')
-        .eq('user_email', user?.email)
+        .eq('user_email', user.email)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
