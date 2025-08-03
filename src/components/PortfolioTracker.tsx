@@ -434,6 +434,7 @@ export default function PortfolioTracker() {
                 <option value="totalReturn">Sort by Return</option>
                 <option value="cagr">Sort by CAGR</option>
                 <option value="totalValue">Sort by Total Value</option>
+                <option value="purchaseDate">Sort by Purchase Date</option>
               </select>
             </div>
             
@@ -445,7 +446,6 @@ export default function PortfolioTracker() {
               <option value="all">All Stocks</option>
               <option value="positive">Profitable</option>
               <option value="negative">Losing</option>
-              <option value="purchaseDate">Sort by Purchase Date</option>
             </select>
             
             <div className="flex items-center gap-1 border border-gray-300 rounded">
