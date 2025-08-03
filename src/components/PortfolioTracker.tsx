@@ -31,15 +31,20 @@ export default function PortfolioTracker() {
 
   useEffect(() => {
     loadPortfolio();
-  }, []);
+  }, [user]);
 
   const loadPortfolio = async () => {
+    if (!user?.email) {
+      setPortfolioStocks([]);
+      return;
+    }
+    
     setLoading(true);
     try {
       const { data, error } = await supabase
         .from('portfolio_stocks')
         .select('*')
-        .eq('user_email', user?.email)
+        .eq('user_email', user.email)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -120,7 +125,7 @@ export default function PortfolioTracker() {
           buy_price: newStock.buyPrice,
           purchase_date: newStock.purchaseDate,
           current_price: newStock.currentPrice,
-          user_email: user?.email
+          user_email: user.email
         }]);
 
       if (error) throw error;
