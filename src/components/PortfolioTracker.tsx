@@ -17,6 +17,7 @@ export default function PortfolioTracker() {
   const [editingStock, setEditingStock] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<any>(null);
   const [updatingPrices, setUpdatingPrices] = useState(false);
+  const [fetchingNewStockPrice, setFetchingNewStockPrice] = useState(false);
 
   const [newStock, setNewStock] = useState({
     ticker: '',
@@ -80,6 +81,27 @@ export default function PortfolioTracker() {
       setPortfolioStocks([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchCurrentPriceForNewStock = async () => {
+    if (!newStock.ticker) return;
+    
+    setFetchingNewStockPrice(true);
+    try {
+      const priceData = await stockPriceService.getStockPrice(newStock.ticker);
+      if (priceData) {
+        setNewStock(prev => ({
+          ...prev,
+          currentPrice: priceData.price
+        }));
+      } else {
+        console.error('No price data received for', newStock.ticker);
+      }
+    } catch (error) {
+      console.error('Failed to fetch current price:', error);
+    } finally {
+      setFetchingNewStockPrice(false);
     }
   };
 
@@ -487,8 +509,20 @@ export default function PortfolioTracker() {
                 value={newStock.currentPrice || ''}
                 onChange={(e) => setNewStock(prev => ({ ...prev, currentPrice: Number(e.target.value) }))}
                 step="0.01"
-                className="px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                className="px-3 py-2 pr-12 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 relative"
               />
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={fetchCurrentPriceForNewStock}
+                  disabled={!newStock.ticker || fetchingNewStockPrice}
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 p-2 text-gray-400 hover:text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Fetch current price"
+                  style={{ top: '-20px' }}
+                >
+                  <RefreshCw className={`w-4 h-4 ${fetchingNewStockPrice ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
               <input
                 type="date"
                 value={newStock.purchaseDate}
