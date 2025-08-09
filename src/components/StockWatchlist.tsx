@@ -97,7 +97,10 @@ export default function StockWatchlist() {
 
   const startEdit = (stock: SavedStock) => {
     setEditingStock(stock);
-    setEditForm(stock.dcf_inputs);
+    setEditForm({
+      ...stock.dcf_inputs,
+      currentPrice: stock.currentPrice
+    });
   };
 
   const cancelEdit = () => {
