@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { Calculator, Wallet, BarChart3, Eye, LogOut, User, Lock } from 'lucide-react';
+import { Calculator, Wallet, BarChart3, Eye, LogOut, User, Lock, MessageSquare } from 'lucide-react';
 import DCFCalculator from './components/DCFCalculator';
 import PortfolioTracker from './components/PortfolioTracker';
 import StockWatchlist from './components/StockWatchlist';
+import AboutUs from './components/AboutUs';
+import ContactUs from './components/ContactUs';
 import AuthForm from './components/AuthForm';
 import ChangePasswordForm from './components/ChangePasswordForm';
 import { useAuth } from './hooks/useAuth';
@@ -10,7 +12,7 @@ import { supabase } from './lib/supabase';
 
 function App() {
   const { user, loading: authLoading, error: authError, signIn, signUp, signOut, resetPassword, updatePassword } = useAuth();
-  const [activeTab, setActiveTab] = useState<'watchlist' | 'dcf' | 'portfolio'>('watchlist');
+  const [activeTab, setActiveTab] = useState<'watchlist' | 'dcf' | 'portfolio' | 'about' | 'contact'>('watchlist');
   const [authFormLoading, setAuthFormLoading] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
 
@@ -74,7 +76,9 @@ function App() {
   const tabs = [
     { id: 'watchlist', label: 'Stock Watchlist', icon: Eye },
     { id: 'dcf', label: 'DCF Valuation', icon: Calculator },
-    { id: 'portfolio', label: 'Portfolio Tracker', icon: Wallet }
+    { id: 'portfolio', label: 'Portfolio Tracker', icon: Wallet },
+    { id: 'about', label: 'About Us', icon: User },
+    { id: 'contact', label: 'Contact', icon: MessageSquare }
   ];
 
   const handleSaveStock = async (stockData: any) => {
@@ -251,6 +255,8 @@ function App() {
         {activeTab === 'watchlist' && <StockWatchlist />}
         {activeTab === 'dcf' && <DCFCalculator onSaveStock={handleSaveStock} />}
         {activeTab === 'portfolio' && <PortfolioTracker />}
+        {activeTab === 'about' && <AboutUs />}
+        {activeTab === 'contact' && <ContactUs />}
       </main>
 
       {/* Footer */}
