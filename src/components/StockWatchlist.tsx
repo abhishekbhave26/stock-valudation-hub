@@ -12,7 +12,7 @@ export default function StockWatchlist() {
   const { user } = useAuth();
   const [stocks, setStocks] = useState<SavedStock[]>([]);
   const [loading, setLoading] = useState(false);
-  const [sortBy, setSortBy] = useState<'ticker' | 'expectedReturn' | 'cagr' | 'buyTarget' | 'status'>('buyTarget');
+  const [sortBy, setSortBy] = useState<'ticker' | 'expectedReturn' | 'cagr' | 'buyTarget' | 'status'>('status');
   const [filterBy, setFilterBy] = useState<'all' | 'undervalued' | 'overvalued'>('all');
   const [editingStock, setEditingStock] = useState<SavedStock | null>(null);
   const [editForm, setEditForm] = useState<DCFInputs | null>(null);
