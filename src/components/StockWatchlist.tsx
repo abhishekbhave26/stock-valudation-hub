@@ -2,9 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, Trash2, BarChart3, Edit, RefreshCw } from 'lucide-react';
 import { SavedStock } from '../types';
 import { supabase } from '../lib/supabase';
-import { formatCurrency, formatPercentage, getPerformanceColor } from '../utils/dcf';
+import { formatCurrency, formatPercentage, getPerformanceColor, calculateDCF } from '../utils/dcf';
 import { DCFInputs } from '../types';
-import { calculateDCF } from '../utils/dcf';
 import { stockPriceService } from '../services/stockPriceService';
 import { useAuth } from '../hooks/useAuth';
 
@@ -16,6 +15,8 @@ export default function StockWatchlist() {
   const [filterBy, setFilterBy] = useState<'all' | 'undervalued' | 'overvalued'>('all');
   const [editingStock, setEditingStock] = useState<SavedStock | null>(null);
   const [editForm, setEditForm] = useState<DCFInputs | null>(null);
+  const [editResults, setEditResults] = useState<any>(null);
+  const [editWarnings, setEditWarnings] = useState<any[]>([]);
   const [updatingPrices, setUpdatingPrices] = useState(false);
 
   const WATCHLIST_LIMIT = 200;
@@ -97,15 +98,23 @@ export default function StockWatchlist() {
 
   const startEdit = (stock: SavedStock) => {
     setEditingStock(stock);
-    setEditForm({
+    const formData = {
       ...stock.dcf_inputs,
       currentPrice: stock.currentPrice
-    });
+    };
+    setEditForm(formData);
+    
+    // Calculate initial results
+    const { results, warnings } = calculateDCF(formData);
+    setEditResults(results);
+    setEditWarnings(warnings);
   };
 
   const cancelEdit = () => {
     setEditingStock(null);
     setEditForm(null);
+    setEditResults(null);
+    setEditWarnings([]);
   };
 
   const saveEdit = async () => {
