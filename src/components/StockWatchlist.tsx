@@ -117,6 +117,32 @@ export default function StockWatchlist() {
     setEditWarnings([]);
   };
 
+  const handleEditFormChange = (field: string, value: number) => {
+    if (!editForm) return;
+    
+    const updatedForm = { ...editForm, [field]: value };
+    setEditForm(updatedForm);
+    
+    // Recalculate DCF results with updated form data
+    const { results, warnings } = calculateDCF(updatedForm);
+    setEditResults(results);
+    setEditWarnings(warnings);
+  };
+
+  const handleGrowthRateChange = (index: number, value: number) => {
+    if (!editForm) return;
+    
+    const updatedGrowthRates = [...editForm.growthRates];
+    updatedGrowthRates[index] = value;
+    const updatedForm = { ...editForm, growthRates: updatedGrowthRates };
+    setEditForm(updatedForm);
+    
+    // Recalculate DCF results with updated form data
+    const { results, warnings } = calculateDCF(updatedForm);
+    setEditResults(results);
+    setEditWarnings(warnings);
+  };
+
   const saveEdit = async () => {
     if (!editingStock || !editForm) return;
 
