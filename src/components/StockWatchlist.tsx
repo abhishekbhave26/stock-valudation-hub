@@ -422,6 +422,7 @@ export default function StockWatchlist() {
                       <thead className="bg-gray-50">
                         <tr>
                           <th className="px-2 py-1 text-left">Year</th>
+                          <th className="px-2 py-1 text-left">Metric Value</th>
                           <th className="px-2 py-1 text-left">Price</th>
                           <th className="px-2 py-1 text-left">Growth</th>
                         </tr>
@@ -432,6 +433,7 @@ export default function StockWatchlist() {
                           return (
                             <tr key={index}>
                               <td className="px-2 py-1">{currentYear + index + 1}</td>
+                              <td className="px-2 py-1 font-medium text-gray-700">${editResults.projectedValues[index].toFixed(2)}</td>
                               <td className="px-2 py-1 font-medium text-blue-600">{formatCurrency(price)}</td>
                               <td className="px-2 py-1">{editForm.growthRates[index]}%</td>
                             </tr>
