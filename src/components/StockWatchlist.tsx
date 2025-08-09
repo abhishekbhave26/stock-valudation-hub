@@ -270,88 +270,186 @@ export default function StockWatchlist() {
   return (
     <div className="space-y-6">
       {/* Edit Modal */}
-      {editingStock && editForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+      {editingStock && editForm && editResults && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 max-w-6xl w-full max-h-[95vh] overflow-y-auto">
             <h3 className="text-xl font-semibold mb-4">Edit {editingStock.ticker}</h3>
             
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Current Price ($)</label>
-                  <div className="w-full px-3 py-2 border border-gray-200 rounded bg-gray-50 text-gray-700">
-                    {formatCurrency(editForm.currentPrice)}
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">Current price is updated automatically</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Desired Return (%)</label>
-                  <input
-                    type="number"
-                    value={editForm.desiredReturn}
-                    onChange={(e) => setEditForm(prev => prev ? {...prev, desiredReturn: parseFloat(e.target.value)} : null)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
-                    step="0.1"
-                  />
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Valuation Multiple</label>
-                  <input
-                    type="number"
-                    value={editForm.valuationMultiple}
-                    onChange={(e) => setEditForm(prev => prev ? {...prev, valuationMultiple: parseFloat(e.target.value)} : null)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
-                    step="0.1"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Base Metric Per Share</label>
-                  <input
-                    type="number"
-                    value={editForm.baseMetricPerShare}
-                    onChange={(e) => setEditForm(prev => prev ? {...prev, baseMetricPerShare: parseFloat(e.target.value)} : null)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
-                    step="0.01"
-                  />
-                </div>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Growth Rates (%)</label>
-                <div className="grid grid-cols-5 gap-2">
-                  {editForm.growthRates.map((rate, index) => (
-                    <div key={index}>
-                      <label className="block text-xs text-gray-500 mb-1 text-center">Y{index + 1}</label>
-                      <input
-                        type="number"
-                        value={rate}
-                        onChange={(e) => {
-                          const newRates = [...editForm.growthRates];
-                          newRates[index] = parseFloat(e.target.value);
-                          setEditForm(prev => prev ? {...prev, growthRates: newRates} : null);
-                        }}
-                        className="w-full px-2 py-1 border border-gray-300 rounded text-center text-sm focus:ring-2 focus:ring-blue-500"
-                        step="0.1"
-                      />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* Left Column - Edit Form */}
+              <div className="space-y-4">
+                <h4 className="text-lg font-medium text-gray-800 border-b pb-2">DCF Parameters</h4>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Current Price ($)</label>
+                    <div className="w-full px-3 py-2 border border-gray-200 rounded bg-gray-50 text-gray-700">
+                      {formatCurrency(editForm.currentPrice)}
                     </div>
-                  ))}
+                    <p className="text-xs text-gray-500 mt-1">Current price is updated automatically</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Desired Return (%)</label>
+                    <input
+                      type="number"
+                      value={editForm.desiredReturn}
+                      onChange={(e) => handleEditFormChange('desiredReturn', parseFloat(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                      step="0.1"
+                    />
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Valuation Multiple</label>
+                    <input
+                      type="number"
+                      value={editForm.valuationMultiple}
+                      onChange={(e) => handleEditFormChange('valuationMultiple', parseFloat(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                      step="0.1"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Base Metric Per Share</label>
+                    <input
+                      type="number"
+                      value={editForm.baseMetricPerShare}
+                      onChange={(e) => handleEditFormChange('baseMetricPerShare', parseFloat(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                      step="0.01"
+                    />
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Growth Rates (%)</label>
+                  <div className="grid grid-cols-5 gap-2">
+                    {editForm.growthRates.map((rate, index) => (
+                      <div key={index}>
+                        <label className="block text-xs text-gray-500 mb-1 text-center">Y{index + 1}</label>
+                        <input
+                          type="number"
+                          value={rate}
+                          onChange={(e) => handleGrowthRateChange(index, parseFloat(e.target.value))}
+                          className="w-full px-2 py-1 border border-gray-300 rounded text-center text-sm focus:ring-2 focus:ring-blue-500"
+                          step="0.1"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              
+              {/* Right Column - DCF Results */}
+              <div className="space-y-4">
+                <h4 className="text-lg font-medium text-gray-800 border-b pb-2">Updated DCF Results</h4>
+                
+                {/* Warnings */}
+                {editWarnings.length > 0 && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <h5 className="font-medium text-amber-800 mb-2">Validation Warnings</h5>
+                    <ul className="space-y-1">
+                      {editWarnings.map((warning, index) => (
+                        <li key={index} className="text-sm text-amber-700">
+                          • {warning.message}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                
+                {/* Key Metrics */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="text-center p-3 bg-blue-50 rounded-lg">
+                    <div className="text-lg font-bold text-blue-600">
+                      {formatCurrency(editResults.fairValue)}
+                    </div>
+                    <p className="text-xs text-gray-600">Fair Value</p>
+                  </div>
+                  <div className="text-center p-3 bg-green-50 rounded-lg">
+                    <div className={`text-lg font-bold ${getPerformanceColor(editResults.totalReturn, 'return')}`}>
+                      {formatPercentage(editResults.totalReturn)}
+                    </div>
+                    <p className="text-xs text-gray-600">Total Return</p>
+                  </div>
+                  <div className="text-center p-3 bg-purple-50 rounded-lg">
+                    <div className={`text-lg font-bold ${getPerformanceColor(editResults.cagr, 'cagr')}`}>
+                      {formatPercentage(editResults.cagr)}
+                    </div>
+                    <p className="text-xs text-gray-600">CAGR</p>
+                  </div>
+                  <div className="text-center p-3 bg-yellow-50 rounded-lg">
+                    <div className="text-lg font-bold text-green-600">
+                      {formatCurrency(editResults.buyTargetPrice)}
+                    </div>
+                    <p className="text-xs text-gray-600">Buy Target</p>
+                  </div>
+                </div>
+                
+                {/* 5-Year Projections Table */}
+                <div>
+                  <h5 className="font-medium text-gray-700 mb-2">5-Year Projections</h5>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm border border-gray-200 rounded">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-2 py-1 text-left">Year</th>
+                          <th className="px-2 py-1 text-left">Price</th>
+                          <th className="px-2 py-1 text-left">Growth</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {editResults.projectedPrices.map((price, index) => {
+                          const currentYear = new Date().getFullYear();
+                          return (
+                            <tr key={index}>
+                              <td className="px-2 py-1">{currentYear + index + 1}</td>
+                              <td className="px-2 py-1 font-medium text-blue-600">{formatCurrency(price)}</td>
+                              <td className="px-2 py-1">{editForm.growthRates[index]}%</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                
+                {/* Valuation Summary */}
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <h5 className="font-medium text-gray-700 mb-2">Valuation Summary</h5>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span>Current Price:</span>
+                      <span className="font-medium">{formatCurrency(editForm.currentPrice)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Fair Value:</span>
+                      <span className="font-medium text-blue-600">{formatCurrency(editResults.fairValue)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Upside/Downside:</span>
+                      <span className={`font-medium ${editResults.totalReturn >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {formatPercentage(editResults.totalReturn)}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
             
-            <div className="flex gap-3 mt-6">
+            {/* Action Buttons */}
+            <div className="flex gap-3 mt-8 pt-4 border-t">
               <button
                 onClick={saveEdit}
-                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-medium"
               >
                 Save Changes
               </button>
               <button
                 onClick={cancelEdit}
-                className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
+                className="bg-gray-500 text-white px-6 py-2 rounded-lg hover:bg-gray-600 font-medium"
               >
                 Cancel
               </button>
