@@ -32,7 +32,7 @@ export default function ValuationResults({
       fairValue: results.fairValue,
       expectedReturn: results.totalReturn,
       cagr: results.cagr,
-      buyTarget: results.fairValue * 0.8, // 20% margin of safety
+      buyTarget: results.buyTargetPrice,
       dcfInputs: {
         ...dcfInputs,
         projectedPrices: results.projectedPrices
