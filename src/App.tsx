@@ -16,13 +16,6 @@ function App() {
   const [authFormLoading, setAuthFormLoading] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
 
-  // Reset to watchlist tab when user changes
-  React.useEffect(() => {
-    if (user) {
-      setActiveTab('watchlist');
-    }
-  }, [user]);
-
   const handleLogin = async (email: string, password: string) => {
     setAuthFormLoading(true);
     try {
