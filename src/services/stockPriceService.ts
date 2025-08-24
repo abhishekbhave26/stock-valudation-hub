@@ -13,7 +13,7 @@ interface CachedPrice {
 
 class StockPriceService {
   private cache: Map<string, CachedPrice> = new Map();
-  private readonly CACHE_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
+  private readonly CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
   private readonly API_KEY = import.meta.env.VITE_FINNHUB_API_KEY;
   private readonly BASE_URL = 'https://finnhub.io/api/v1';
   
@@ -185,7 +185,7 @@ class StockPriceService {
     return Array.from(this.cache.entries()).map(([symbol, cached]) => ({
       symbol,
       price: cached.price,
-      age: `${Math.round((now - cached.timestamp) / (1000 * 60))} minutes ago`,
+      age: `${Math.round((now - cached.timestamp) / (1000 * 60 * 60))} hours ago`,
       source: cached.source
     }));
   }
