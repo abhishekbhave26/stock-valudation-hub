@@ -405,7 +405,7 @@ export default function PortfolioTracker() {
                     cx="50%"
                     cy="50%"
                     labelLine={false}
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    label={({ name, percent }) => percent > 0.05 ? `${name} ${(percent * 100).toFixed(1)}%` : ''}
                     outerRadius={80}
                     fill="#8884d8"
                     dataKey="value"
@@ -414,7 +414,19 @@ export default function PortfolioTracker() {
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(value) => formatCurrency(value as number)} />
+                  <Tooltip 
+                    formatter={(value, name) => [formatCurrency(value as number), name]}
+                    labelFormatter={() => ''}
+                  />
+                  <Legend 
+                    verticalAlign="bottom" 
+                    height={36}
+                    formatter={(value, entry) => {
+                      const stock = pieChartData.find(item => item.name === value);
+                      const percentage = stock ? ((stock.value / totalPortfolioValue) * 100).toFixed(1) : '0';
+                      return `${value} (${percentage}%)`;
+                    }}
+                  />
                 </RechartsPieChart>
               </ResponsiveContainer>
             </div>
