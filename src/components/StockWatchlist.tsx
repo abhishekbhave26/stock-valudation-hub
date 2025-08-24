@@ -46,17 +46,12 @@ export default function StockWatchlist() {
           const currentPrice = stock.current_price;
           const totalReturn = currentPrice > 0 && stock.fair_value > 0 ? (currentPrice - stock.fair_value) / stock.fair_value : stock.expected_return;
           
-          // Recalculate CAGR based on current price vs fair value
-          // If we have DCF inputs, use the original buy price from DCF, otherwise use fair value as baseline
-          const basePrice = stock.dcf_inputs?.currentPrice || stock.fair_value;
-          const cagr = basePrice > 0 && currentPrice > 0 ? Math.pow(currentPrice / basePrice, 1/5) - 1 : stock.cagr;
-          
           return {
             ...stock,
             currentPrice,
             fairValue: stock.fair_value,
             expectedReturn: totalReturn,
-            cagr,
+            cagr: stock.cagr,
             buyTarget: stock.buy_target
           };
         });
