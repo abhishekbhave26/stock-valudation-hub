@@ -33,6 +33,10 @@ export function useAuth() {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
+        options: {
+          // Keep user logged in for 7 days
+          persistSession: true
+        }
       });
 
       if (error) throw error;
@@ -57,7 +61,9 @@ export function useAuth() {
         options: {
           data: {
             username: username,
-          }
+          },
+          // Keep user logged in for 7 days after signup
+          persistSession: true
         }
       });
 

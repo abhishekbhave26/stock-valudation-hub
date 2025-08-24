@@ -3,7 +3,17 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://placeholder.supabase.co';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'placeholder-anon-key';
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    // Keep sessions for 7 days (604800 seconds)
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    // Set session expiry to 7 days
+    storage: window.localStorage,
+    storageKey: 'supabase.auth.token'
+  }
+});
 
 export type Database = {
   public: {
