@@ -21,7 +21,7 @@ export default function PortfolioTracker() {
   const [updatingPrices, setUpdatingPrices] = useState(false);
   const [fetchingNewStockPrice, setFetchingNewStockPrice] = useState(false);
 
-  const PORTFOLIO_LIMIT = 100;
+  const PORTFOLIO_LIMIT = 150;
 
   const [newStock, setNewStock] = useState({
     ticker: '',
