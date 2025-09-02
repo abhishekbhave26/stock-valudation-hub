@@ -635,7 +635,6 @@ export default function StockWatchlist() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Buy Target</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Updated</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
@@ -694,27 +693,6 @@ export default function StockWatchlist() {
                       {isStale && (
                         <div className="text-xs text-red-500">Needs update</div>
                       )}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="max-w-xs">
-                        {stock.notes && stock.notes.trim() ? (
-                          <div>
-                            <div className={`text-sm text-gray-700 ${expandedNotes.has(stock.id!) ? '' : 'line-clamp-2'}`}>
-                              {stock.notes}
-                            </div>
-                            {stock.notes.length > 100 && (
-                              <button
-                                onClick={() => toggleNotesExpansion(stock.id!)}
-                                className="text-xs text-blue-600 hover:text-blue-700 mt-1"
-                              >
-                                {expandedNotes.has(stock.id!) ? 'Show less' : 'Show more'}
-                              </button>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-xs text-gray-400 italic">No notes</span>
-                        )}
-                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex items-center gap-2">
