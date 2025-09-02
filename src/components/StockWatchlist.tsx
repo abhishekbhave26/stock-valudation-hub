@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, Trash2, BarChart3, Edit, RefreshCw } from 'lucide-react';
+import { TrendingUp, TrendingDown, Trash2, BarChart3, Edit, RefreshCw, AlertTriangle } from 'lucide-react';
 import { SavedStock } from '../types';
 import { supabase } from '../lib/supabase';
 import { formatCurrency, formatPercentage, getPerformanceColor, calculateDCF } from '../utils/dcf';
 import { DCFInputs } from '../types';
 import { stockPriceService } from '../services/stockPriceService';
 import { useAuth } from '../hooks/useAuth';
+import { format, differenceInDays } from 'date-fns';
 
 export default function StockWatchlist() {
   const { user } = useAuth();
@@ -221,7 +222,10 @@ export default function StockWatchlist() {
         try {
           const { error } = await supabase
             .from('saved_stocks')
-            .update({ current_price: update.currentPrice })
+            .update({ 
+              current_price: update.currentPrice,
+              updated_at: new Date().toISOString()
+            })
             .eq('id', update.id);
           
           if (error) {
@@ -251,6 +255,12 @@ export default function StockWatchlist() {
     if (currentPrice <= fairValue) return { status: 'buy', color: 'bg-green-500', text: 'Buy' };
     if (currentPrice <= fairValue * 1.2) return { status: 'hold', color: 'bg-yellow-500', text: 'Hold' };
     return { status: 'overvalued', color: 'bg-red-600', text: 'Overvalued' };
+  };
+
+  const isStockStale = (stock: SavedStock) => {
+    const updatedAt = new Date(stock.updatedAt);
+    const daysSinceUpdate = differenceInDays(new Date(), updatedAt);
+    return daysSinceUpdate > 90;
   };
 
   const filteredAndSortedStocks = stocks
@@ -545,16 +555,26 @@ export default function StockWatchlist() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">CAGR</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Buy Target</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Updated</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredAndSortedStocks.map((stock) => {
                 const valuation = getValuationStatus(stock);
+                const isStale = isStockStale(stock);
                 return (
                   <tr key={stock.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="font-medium text-gray-900">{stock.ticker}</div>
+                      <div className="flex items-center gap-2">
+                        <div className="font-medium text-gray-900">{stock.ticker}</div>
+                        {isStale && (
+                          <AlertTriangle 
+                            className="w-4 h-4 text-red-500" 
+                            title={`Last updated ${format(new Date(stock.updatedAt), 'MMM dd, yyyy')} - over 90 days ago`}
+                          />
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">
@@ -586,6 +606,14 @@ export default function StockWatchlist() {
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-white ${valuation.color}`}>
                         {valuation.text}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className={`text-sm ${isStale ? 'text-red-600 font-medium' : 'text-gray-900'}`}>
+                        {format(new Date(stock.updatedAt), 'MMM dd, yyyy')}
+                      </div>
+                      {isStale && (
+                        <div className="text-xs text-red-500">Needs update</div>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex items-center gap-2">
