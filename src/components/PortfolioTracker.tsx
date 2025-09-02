@@ -14,6 +14,7 @@ export default function PortfolioTracker() {
   const [loading, setLoading] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [sortBy, setSortBy] = useState<'ticker' | 'totalReturn' | 'cagr' | 'totalValue' | 'purchaseDate'>('totalReturn');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [filterBy, setFilterBy] = useState<'all' | 'positive' | 'negative'>('all');
   const [viewMode, setViewMode] = useState<'tile' | 'list'>('list');
   const [editingStock, setEditingStock] = useState<string | null>(null);
@@ -283,18 +284,25 @@ export default function PortfolioTracker() {
       return true;
     })
     .sort((a, b) => {
+      let comparison = 0;
       switch (sortBy) {
         case 'totalReturn':
-          return (b.totalReturn || 0) - (a.totalReturn || 0);
+          comparison = (b.totalReturn || 0) - (a.totalReturn || 0);
+          break;
         case 'cagr':
-          return (b.cagr || 0) - (a.cagr || 0);
+          comparison = (b.cagr || 0) - (a.cagr || 0);
+          break;
         case 'totalValue':
-          return (b.totalValue || 0) - (a.totalValue || 0);
+          comparison = (b.totalValue || 0) - (a.totalValue || 0);
+          break;
         case 'purchaseDate':
-          return b.purchaseDate.getTime() - a.purchaseDate.getTime();
+          comparison = b.purchaseDate.getTime() - a.purchaseDate.getTime();
+          break;
         default:
-          return a.ticker.localeCompare(b.ticker);
+          comparison = a.ticker.localeCompare(b.ticker);
       }
+      
+      return sortDirection === 'desc' ? comparison : -comparison;
     });
 
   const totalPortfolioValue = portfolioStocks.reduce((sum, stock) => sum + (stock.totalValue || 0), 0);
@@ -461,6 +469,15 @@ export default function PortfolioTracker() {
                 <option value="cagr">Sort by CAGR</option>
                 <option value="totalValue">Sort by Total Value</option>
                 <option value="purchaseDate">Sort by Purchase Date</option>
+              </select>
+              
+              <select
+                value={sortDirection}
+                onChange={(e) => setSortDirection(e.target.value as 'asc' | 'desc')}
+                className="px-3 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="desc">Descending</option>
+                <option value="asc">Ascending</option>
               </select>
             </div>
             
