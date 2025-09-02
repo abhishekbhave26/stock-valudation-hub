@@ -100,7 +100,7 @@ function App() {
       if (countError) throw countError;
 
       const currentCount = existingStocks?.length || 0;
-      const WATCHLIST_LIMIT = 200;
+      const WATCHLIST_LIMIT = 500;
 
       // Check if adding new stock would exceed limit
       if (currentCount >= WATCHLIST_LIMIT) {

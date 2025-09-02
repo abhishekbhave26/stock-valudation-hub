@@ -22,7 +22,7 @@ export default function StockWatchlist() {
   const [editWarnings, setEditWarnings] = useState<any[]>([]);
   const [updatingPrices, setUpdatingPrices] = useState(false);
 
-  const WATCHLIST_LIMIT = 200;
+  const WATCHLIST_LIMIT = 500;
 
   useEffect(() => {
     loadStocks();
