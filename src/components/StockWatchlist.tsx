@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, Trash2, BarChart3, Edit, RefreshCw, AlertTriangle } from 'lucide-react';
+import { TrendingUp, TrendingDown, Trash2, BarChart3, Edit, RefreshCw, AlertTriangle, Search } from 'lucide-react';
 import { SavedStock } from '../types';
 import { supabase } from '../lib/supabase';
 import { formatCurrency, formatPercentage, getPerformanceColor, calculateDCF } from '../utils/dcf';
@@ -14,6 +14,7 @@ export default function StockWatchlist() {
   const [loading, setLoading] = useState(false);
   const [sortBy, setSortBy] = useState<'ticker' | 'expectedReturn' | 'cagr' | 'buyTarget' | 'status' | 'lastUpdated'>('cagr');
   const [filterBy, setFilterBy] = useState<'all' | 'undervalued' | 'overvalued'>('all');
+  const [searchTerm, setSearchTerm] = useState('');
   const [editingStock, setEditingStock] = useState<SavedStock | null>(null);
   const [editForm, setEditForm] = useState<DCFInputs | null>(null);
   const [editResults, setEditResults] = useState<any>(null);
@@ -267,6 +268,12 @@ export default function StockWatchlist() {
 
   const filteredAndSortedStocks = stocks
     .filter(stock => {
+      // Search filter
+      if (searchTerm && !stock.ticker.toLowerCase().includes(searchTerm.toLowerCase())) {
+        return false;
+      }
+      
+      // Valuation filter
       if (filterBy === 'undervalued') return stock.currentPrice < stock.fairValue;
       if (filterBy === 'overvalued') return stock.currentPrice > stock.fairValue;
       return true;
@@ -521,6 +528,17 @@ export default function StockWatchlist() {
               <RefreshCw className={`w-4 h-4 ${updatingPrices ? 'animate-spin' : ''}`} />
               {updatingPrices ? 'Updating...' : 'Update Prices'}
             </button>
+            
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search stocks..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent w-48"
+              />
+            </div>
             
             <select
               value={sortBy}
