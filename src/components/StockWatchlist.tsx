@@ -227,10 +227,7 @@ export default function StockWatchlist() {
         try {
           const { error } = await supabase
             .from('saved_stocks')
-            .update({ 
-              current_price: update.currentPrice,
-              updated_at: new Date().toISOString()
-            })
+            .update({ current_price: update.currentPrice })
             .eq('id', update.id);
           
           if (error) {
