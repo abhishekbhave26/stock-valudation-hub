@@ -13,6 +13,7 @@ export default function StockWatchlist() {
   const [stocks, setStocks] = useState<SavedStock[]>([]);
   const [loading, setLoading] = useState(false);
   const [sortBy, setSortBy] = useState<'ticker' | 'expectedReturn' | 'cagr' | 'buyTarget' | 'status' | 'lastUpdated'>('cagr');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [filterBy, setFilterBy] = useState<'all' | 'undervalued' | 'overvalued'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [editingStock, setEditingStock] = useState<SavedStock | null>(null);
@@ -279,23 +280,31 @@ export default function StockWatchlist() {
       return true;
     })
     .sort((a, b) => {
+      let comparison = 0;
       switch (sortBy) {
         case 'expectedReturn':
-          return b.expectedReturn - a.expectedReturn;
+          comparison = b.expectedReturn - a.expectedReturn;
+          break;
         case 'cagr':
-          return b.cagr - a.cagr;
+          comparison = b.cagr - a.cagr;
+          break;
         case 'buyTarget':
-          return a.buyTarget - b.buyTarget;
+          comparison = a.buyTarget - b.buyTarget;
+          break;
         case 'status':
           const statusOrder = { 'strong-buy': 0, 'buy': 1, 'hold': 2, 'overvalued': 3 };
           const aStatus = getValuationStatus(a).status;
           const bStatus = getValuationStatus(b).status;
-          return statusOrder[aStatus] - statusOrder[bStatus];
+          comparison = statusOrder[aStatus] - statusOrder[bStatus];
+          break;
         case 'lastUpdated':
-          return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+          comparison = new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+          break;
         default:
-          return a.ticker.localeCompare(b.ticker);
+          comparison = a.ticker.localeCompare(b.ticker);
       }
+      
+      return sortDirection === 'desc' ? comparison : -comparison;
     });
 
   if (loading) {
@@ -551,6 +560,15 @@ export default function StockWatchlist() {
               <option value="buyTarget">Sort by Buy Target</option>
               <option value="status">Sort by Status</option>
               <option value="lastUpdated">Sort by Last Updated</option>
+            </select>
+            
+            <select
+              value={sortDirection}
+              onChange={(e) => setSortDirection(e.target.value as 'asc' | 'desc')}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="desc">Descending</option>
+              <option value="asc">Ascending</option>
             </select>
             
             <select
