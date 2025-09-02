@@ -159,19 +159,47 @@ class StockPriceService {
 
   async getMultipleStockPrices(symbols: string[]): Promise<Map<string, StockPrice>> {
     const results = new Map<string, StockPrice>();
+    const uniqueSymbols = [...new Set(symbols.map(s => s.toUpperCase()))];
     
-    // Process symbols one by one to respect rate limits
-    for (const symbol of symbols) {
-      try {
-        const price = await this.getStockPrice(symbol);
-        if (price) {
-          results.set(symbol.toUpperCase(), price);
+    console.log(`Fetching prices for ${uniqueSymbols.length} unique symbols in parallel`);
+    
+    // Create batches to respect rate limits (30 concurrent requests max)
+    const BATCH_SIZE = 30;
+    const batches = [];
+    
+    for (let i = 0; i < uniqueSymbols.length; i += BATCH_SIZE) {
+      batches.push(uniqueSymbols.slice(i, i + BATCH_SIZE));
+    }
+    
+    // Process batches sequentially, but symbols within each batch in parallel
+    for (const batch of batches) {
+      console.log(`Processing batch of ${batch.length} symbols`);
+      
+      const batchPromises = batch.map(async (symbol) => {
+        try {
+          const price = await this.getStockPrice(symbol);
+          if (price) {
+            results.set(symbol, price);
+          }
+          return { symbol, success: true };
+        } catch (error) {
+          console.error(`Failed to fetch price for ${symbol}:`, error);
+          return { symbol, success: false };
         }
-      } catch (error) {
-        console.error(`Failed to fetch price for ${symbol}:`, error);
+      });
+      
+      // Wait for all requests in this batch to complete
+      const batchResults = await Promise.allSettled(batchPromises);
+      const successCount = batchResults.filter(r => r.status === 'fulfilled').length;
+      console.log(`Batch completed: ${successCount}/${batch.length} successful`);
+      
+      // Small delay between batches to be respectful to the API
+      if (batches.indexOf(batch) < batches.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
     
+    console.log(`Price update completed: ${results.size}/${uniqueSymbols.length} prices fetched`);
     return results;
   }
 

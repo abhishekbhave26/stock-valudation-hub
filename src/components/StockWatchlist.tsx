@@ -191,58 +191,61 @@ export default function StockWatchlist() {
     if (stocks.length === 0) return;
     
     setUpdatingPrices(true);
-    console.log('Starting price update for', stocks.length, 'stocks');
+    const uniqueSymbols = [...new Set(stocks.map(stock => stock.ticker))];
+    console.log(`Starting optimized price update for ${stocks.length} stocks (${uniqueSymbols.length} unique symbols)`);
     
     try {
-      const symbols = [...new Set(stocks.map(stock => stock.ticker))];
-      console.log('Unique symbols to update:', symbols);
+      // Use the optimized batch fetching
+      const priceMap = await stockPriceService.getMultipleStockPrices(uniqueSymbols);
+      console.log(`Received ${priceMap.size} price updates`);
+      
+      // Prepare batch updates for database
       const priceUpdates: { id: string; currentPrice: number }[] = [];
       
-      // Fetch prices for all unique symbols
-      for (const symbol of symbols) {
-        try {
-          console.log('Fetching price for', symbol);
-          const priceData = await stockPriceService.getStockPrice(symbol);
-          if (priceData) {
-            console.log('Got price for', symbol, ':', priceData.price);
-            // Find all stocks with this symbol and prepare updates
-            stocks
-              .filter(stock => stock.ticker === symbol)
-              .forEach(stock => {
-                priceUpdates.push({
-                  id: stock.id!,
-                  currentPrice: priceData.price
-                });
-              });
-          } else {
-            console.error('No price data received for', symbol);
-          }
-        } catch (error) {
-          console.error(`Failed to fetch price for ${symbol}:`, error);
+      stocks.forEach(stock => {
+        const priceData = priceMap.get(stock.ticker);
+        if (priceData) {
+          priceUpdates.push({
+            id: stock.id!,
+            currentPrice: priceData.price
+          });
         }
-      }
+      });
       
       console.log('Price updates to apply:', priceUpdates);
       
-      // Update database with new prices
-      for (const update of priceUpdates) {
-        try {
-          const { error } = await supabase
-            .from('saved_stocks')
-            .update({ current_price: update.currentPrice })
-            .eq('id', update.id);
-          
-          if (error) {
-            console.error('Database update error:', error);
-            throw error;
+      // Batch update database - process in chunks of 10
+      const UPDATE_BATCH_SIZE = 10;
+      for (let i = 0; i < priceUpdates.length; i += UPDATE_BATCH_SIZE) {
+        const batch = priceUpdates.slice(i, i + UPDATE_BATCH_SIZE);
+        
+        const updatePromises = batch.map(async (update) => {
+          try {
+            const { error } = await supabase
+              .from('saved_stocks')
+              .update({ current_price: update.currentPrice })
+              .eq('id', update.id);
+            
+            if (error) throw error;
+            return { success: true, id: update.id };
+          } catch (error) {
+            console.error(`Failed to update price for stock ${update.id}:`, error);
+            return { success: false, id: update.id };
           }
-        } catch (error) {
-          console.error(`Failed to update price for stock ${update.id}:`, error);
+        });
+        
+        await Promise.allSettled(updatePromises);
+        
+        // Small delay between database update batches
+        if (i + UPDATE_BATCH_SIZE < priceUpdates.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
       }
       
       // Reload watchlist to reflect changes
       await loadStocks();
+      
+      console.log(`Price update completed successfully`);
       
     } catch (error) {
       console.error('Failed to update current prices:', error);
