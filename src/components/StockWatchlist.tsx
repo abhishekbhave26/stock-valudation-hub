@@ -21,6 +21,7 @@ export default function StockWatchlist() {
   const [editResults, setEditResults] = useState<any>(null);
   const [editWarnings, setEditWarnings] = useState<any[]>([]);
   const [updatingPrices, setUpdatingPrices] = useState(false);
+  const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
 
   const WATCHLIST_LIMIT = 500;
 
@@ -55,6 +56,7 @@ export default function StockWatchlist() {
             dcf_inputs: stock.dcf_inputs,
             createdAt: new Date(stock.created_at),
             updatedAt: new Date(stock.updated_at),
+            notes: stock.notes || '',
             userEmail: stock.user_email,
             currentPrice,
             fairValue: stock.fair_value,
@@ -111,7 +113,8 @@ export default function StockWatchlist() {
     setEditingStock(stock);
     const formData = {
       ...stock.dcf_inputs,
-      currentPrice: stock.currentPrice
+      currentPrice: stock.currentPrice,
+      notes: stock.notes || ''
     };
     setEditForm(formData);
     
@@ -174,6 +177,7 @@ export default function StockWatchlist() {
             ...editForm,
             projectedPrices: results.projectedPrices
           },
+          notes: editForm.notes || '',
           updated_at: new Date().toISOString()
         })
         .eq('id', editingStock.id);
@@ -268,6 +272,23 @@ export default function StockWatchlist() {
     const updatedAt = new Date(stock.updatedAt);
     const daysSinceUpdate = differenceInDays(new Date(), updatedAt);
     return daysSinceUpdate > 90;
+  };
+
+  const toggleNotesExpansion = (stockId: string) => {
+    setExpandedNotes(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(stockId)) {
+        newSet.delete(stockId);
+      } else {
+        newSet.add(stockId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleNotesChange = (notes: string) => {
+    if (!editForm) return;
+    setEditForm({ ...editForm, notes });
   };
 
   const filteredAndSortedStocks = stocks
@@ -401,6 +422,20 @@ export default function StockWatchlist() {
                       </div>
                     ))}
                   </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Investment Notes</label>
+                  <textarea
+                    value={editForm.notes || ''}
+                    onChange={(e) => handleNotesChange(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                    rows={4}
+                    placeholder="Add your investment thesis, pros/cons, key metrics, or any other analysis notes..."
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Track your investment reasoning, key metrics, pros/cons, and analysis updates
+                  </p>
                 </div>
               </div>
               
@@ -600,6 +635,7 @@ export default function StockWatchlist() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Buy Target</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Updated</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
@@ -658,6 +694,27 @@ export default function StockWatchlist() {
                       {isStale && (
                         <div className="text-xs text-red-500">Needs update</div>
                       )}
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="max-w-xs">
+                        {stock.notes && stock.notes.trim() ? (
+                          <div>
+                            <div className={`text-sm text-gray-700 ${expandedNotes.has(stock.id!) ? '' : 'line-clamp-2'}`}>
+                              {stock.notes}
+                            </div>
+                            {stock.notes.length > 100 && (
+                              <button
+                                onClick={() => toggleNotesExpansion(stock.id!)}
+                                className="text-xs text-blue-600 hover:text-blue-700 mt-1"
+                              >
+                                {expandedNotes.has(stock.id!) ? 'Show less' : 'Show more'}
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400 italic">No notes</span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex items-center gap-2">
