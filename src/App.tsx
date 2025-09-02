@@ -119,6 +119,7 @@ function App() {
           cagr: stockData.cagr,
           buy_target: stockData.buyTarget,
           dcf_inputs: stockData.dcfInputs,
+          notes: stockData.notes,
           user_email: user?.email
         }]);
 

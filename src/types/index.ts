@@ -40,6 +40,7 @@ export interface SavedStock {
   dcfInputs: DCFInputs;
   createdAt: Date;
   updatedAt: Date;
+  notes?: string;
 }
 
 export interface PortfolioStock {

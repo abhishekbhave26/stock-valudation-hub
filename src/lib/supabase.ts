@@ -30,6 +30,7 @@ export type Database = {
           dcf_inputs: any;
           created_at: string;
           updated_at: string;
+          notes: string;
         };
         Insert: {
           id?: string;
@@ -42,6 +43,7 @@ export type Database = {
           dcf_inputs: any;
           created_at?: string;
           updated_at?: string;
+          notes?: string;
         };
         Update: {
           id?: string;
@@ -54,6 +56,7 @@ export type Database = {
           dcf_inputs?: any;
           created_at?: string;
           updated_at?: string;
+          notes?: string;
         };
       };
       portfolio_stocks: {
