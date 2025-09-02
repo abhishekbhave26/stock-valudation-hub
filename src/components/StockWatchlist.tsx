@@ -12,7 +12,7 @@ export default function StockWatchlist() {
   const { user } = useAuth();
   const [stocks, setStocks] = useState<SavedStock[]>([]);
   const [loading, setLoading] = useState(false);
-  const [sortBy, setSortBy] = useState<'ticker' | 'expectedReturn' | 'cagr' | 'buyTarget' | 'status'>('cagr');
+  const [sortBy, setSortBy] = useState<'ticker' | 'expectedReturn' | 'cagr' | 'buyTarget' | 'status' | 'lastUpdated'>('cagr');
   const [filterBy, setFilterBy] = useState<'all' | 'undervalued' | 'overvalued'>('all');
   const [editingStock, setEditingStock] = useState<SavedStock | null>(null);
   const [editForm, setEditForm] = useState<DCFInputs | null>(null);
@@ -284,6 +284,8 @@ export default function StockWatchlist() {
           const aStatus = getValuationStatus(a).status;
           const bStatus = getValuationStatus(b).status;
           return statusOrder[aStatus] - statusOrder[bStatus];
+        case 'lastUpdated':
+          return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
         default:
           return a.ticker.localeCompare(b.ticker);
       }
@@ -530,6 +532,7 @@ export default function StockWatchlist() {
               <option value="cagr">Sort by CAGR</option>
               <option value="buyTarget">Sort by Buy Target</option>
               <option value="status">Sort by Status</option>
+              <option value="lastUpdated">Sort by Last Updated</option>
             </select>
             
             <select
