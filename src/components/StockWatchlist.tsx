@@ -48,7 +48,12 @@ export default function StockWatchlist() {
           const totalReturn = currentPrice > 0 && stock.fair_value > 0 ? (currentPrice - stock.fair_value) / stock.fair_value : stock.expected_return;
           
           return {
-            ...stock,
+            id: stock.id,
+            ticker: stock.ticker,
+            dcf_inputs: stock.dcf_inputs,
+            createdAt: new Date(stock.created_at),
+            updatedAt: new Date(stock.updated_at),
+            userEmail: stock.user_email,
             currentPrice,
             fairValue: stock.fair_value,
             expectedReturn: totalReturn,
