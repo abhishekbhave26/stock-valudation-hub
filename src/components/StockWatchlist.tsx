@@ -194,25 +194,20 @@ export default function StockWatchlist() {
   const updateAllCurrentPrices = async () => {
     if (stocks.length === 0) return;
     
-    setUpdatingPrices(true);
-    const uniqueSymbols = [...new Set(stocks.map(stock => stock.ticker))];
-    console.log(`Starting optimized price update for ${stocks.length} stocks (${uniqueSymbols.length} unique symbols)`);
-    
-    try {
-      // Use the optimized batch fetching
-      const priceMap = await stockPriceService.getMultipleStockPrices(uniqueSymbols);
-      console.log(`Received ${priceMap.size} price updates`);
-      
-      // Prepare batch updates for database
-      const priceUpdates: { id: string; currentPrice: number }[] = [];
-      
-      stocks.forEach(stock => {
-        const priceData = priceMap.get(stock.ticker);
-        if (priceData) {
-          priceUpdates.push({
-            id: stock.id!,
-            currentPrice: priceData.price
-          });
+          const enrichedStocks: SavedStock[] = data.map(stock => ({
+            id: stock.id,
+            ticker: stock.ticker,
+            dcf_inputs: stock.dcf_inputs,
+            createdAt: new Date(stock.created_at),
+            updatedAt: new Date(stock.updated_at),
+            notes: stock.notes || '',
+            userEmail: stock.user_email,
+            currentPrice: stock.current_price,
+            fairValue: stock.fair_value,
+            expectedReturn: stock.expected_return,
+            cagr: stock.cagr,
+            buyTarget: stock.buy_target
+          }));
         }
       });
       
@@ -225,9 +220,21 @@ export default function StockWatchlist() {
         
         const updatePromises = batch.map(async (update) => {
           try {
+            // Find the stock to recalculate CAGR
+            const stock = stocks.find(s => s.id === update.id);
+            if (!stock) return { success: false, id: update.id };
+            
+            // Recalculate CAGR with new current price
+            const newExpectedReturn = stock.fairValue > 0 ? (update.currentPrice - stock.fairValue) / stock.fairValue : stock.expectedReturn;
+            const newCagr = stock.fairValue > 0 ? Math.pow(update.currentPrice / stock.fairValue, 1/5) - 1 : stock.cagr;
+            
             const { error } = await supabase
               .from('saved_stocks')
-              .update({ current_price: update.currentPrice })
+              .update({ 
+                current_price: update.currentPrice,
+                expected_return: newExpectedReturn,
+                cagr: newCagr
+              })
               .eq('id', update.id);
             
             if (error) throw error;
