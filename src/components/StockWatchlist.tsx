@@ -225,10 +225,26 @@ export default function StockWatchlist() {
         
         const updatePromises = batch.map(async (update) => {
           try {
+            // Recalculate CAGR and expected return based on new price
+            const stock = stocks.find(s => s.id === update.id);
+            if (stock) {
+              const newExpectedReturn = stock.fairValue > 0 ? (update.currentPrice - stock.fairValue) / stock.fairValue : stock.expectedReturn;
+              const newCagr = stock.fairValue > 0 ? Math.pow(update.currentPrice / stock.fairValue, 1/5) - 1 : stock.cagr;
+              
+              const { error } = await supabase
+                .from('saved_stocks')
+                .update({ 
+                  current_price: update.currentPrice,
+                  expected_return: newExpectedReturn,
+                  cagr: newCagr
+                })
+                .eq('id', update.id);
+            } else {
             const { error } = await supabase
               .from('saved_stocks')
               .update({ current_price: update.currentPrice })
               .eq('id', update.id);
+            }
             
             if (error) throw error;
             return { success: true, id: update.id };
