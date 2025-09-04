@@ -200,12 +200,12 @@ export default function StockWatchlist() {
     
     try {
       // Fetch current prices for all unique symbols
-      const priceData = await stockPriceService.getMultipleStockPrices(uniqueSymbols);
+      const priceData = await stockPriceService.getCurrentPrices(uniqueSymbols);
       console.log('Fetched price data:', priceData);
       
       // Create updates array with new prices
       const priceUpdates = stocks.map(stock => {
-        const newPrice = priceData.get(stock.ticker)?.price;
+        const newPrice = priceData[stock.ticker];
         return {
           id: stock.id,
           currentPrice: newPrice || stock.currentPrice // Keep existing price if fetch failed
