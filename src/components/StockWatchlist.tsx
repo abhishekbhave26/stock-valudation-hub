@@ -194,20 +194,25 @@ export default function StockWatchlist() {
   const updateAllCurrentPrices = async () => {
     if (stocks.length === 0) return;
     
-          const enrichedStocks: SavedStock[] = data.map(stock => ({
+    setUpdatingPrices(true);
+    const uniqueSymbols = [...new Set(stocks.map(stock => stock.ticker))];
+    console.log(`Starting optimized price update for ${stocks.length} stocks (${uniqueSymbols.length} unique symbols)`);
+    
+    try {
+      // Use the optimized batch fetching
+      const priceMap = await stockPriceService.getMultipleStockPrices(uniqueSymbols);
+      console.log(`Received ${priceMap.size} price updates`);
+      
+      // Prepare batch updates for database
+      const priceUpdates: { id: string; currentPrice: number }[] = [];
+      
+      stocks.forEach(stock => {
+        const priceData = priceMap.get(stock.ticker);
+        if (priceData && stock.id) {
+          priceUpdates.push({
             id: stock.id,
-            ticker: stock.ticker,
-            dcf_inputs: stock.dcf_inputs,
-            createdAt: new Date(stock.created_at),
-            updatedAt: new Date(stock.updated_at),
-            notes: stock.notes || '',
-            userEmail: stock.user_email,
-            currentPrice: stock.current_price,
-            fairValue: stock.fair_value,
-            expectedReturn: stock.expected_return,
-            cagr: stock.cagr,
-            buyTarget: stock.buy_target
-          }));
+            currentPrice: priceData.price
+          });
         }
       });
       
@@ -299,45 +304,46 @@ export default function StockWatchlist() {
   };
 
   const filteredAndSortedStocks = stocks
-    .filter(stock => {
-      // Search filter
-      if (searchTerm && !stock.ticker.toLowerCase().includes(searchTerm.toLowerCase())) {
-        return false;
-      }
+          const enrichedStocks: SavedStock[] = data.map(stock => ({
+            id: stock.id,
+            ticker: stock.ticker,
+            dcf_inputs: stock.dcf_inputs,
+            createdAt: new Date(stock.created_at),
+            updatedAt: new Date(stock.updated_at),
+            notes: stock.notes || '',
+            userEmail: stock.user_email,
+            currentPrice: stock.current_price,
+            fairValue: stock.fair_value,
+            expectedReturn: stock.expected_return,
+            cagr: stock.cagr,
+            buyTarget: stock.buy_target
+          }));
+        }
+      });
       
-      // Valuation filter
-      if (filterBy === 'undervalued') return stock.currentPrice < stock.fairValue;
-      if (filterBy === 'overvalued') return stock.currentPrice > stock.fairValue;
-      return true;
-    })
-    .sort((a, b) => {
-      let comparison = 0;
-      switch (sortBy) {
-        case 'expectedReturn':
-          comparison = b.expectedReturn - a.expectedReturn;
-          break;
-        case 'cagr':
-          comparison = b.cagr - a.cagr;
-          break;
-        case 'buyTarget':
-          comparison = a.buyTarget - b.buyTarget;
-          break;
-        case 'status':
-          const statusOrder = { 'strong-buy': 0, 'buy': 1, 'hold': 2, 'overvalued': 3 };
-          const aStatus = getValuationStatus(a).status;
-          const bStatus = getValuationStatus(b).status;
-          comparison = statusOrder[aStatus] - statusOrder[bStatus];
-          break;
-        case 'lastUpdated':
-          comparison = new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
-          break;
-        default:
-          comparison = a.ticker.localeCompare(b.ticker);
-      }
+      console.log('Price updates to apply:', priceUpdates);
       
-      return sortDirection === 'desc' ? comparison : -comparison;
-    });
-
+      // Batch update database - process in chunks of 10
+      const UPDATE_BATCH_SIZE = 10;
+      for (let i = 0; i < priceUpdates.length; i += UPDATE_BATCH_SIZE) {
+        const batch = priceUpdates.slice(i, i + UPDATE_BATCH_SIZE);
+        
+        const updatePromises = batch.map(async (update) => {
+          try {
+            // Find the stock to recalculate CAGR
+            const stock = stocks.find(s => s.id === update.id);
+            if (!stock) return { success: false, id: update.id };
+            
+            // Recalculate CAGR with new current price
+            const newExpectedReturn = stock.fairValue > 0 ? (update.currentPrice - stock.fairValue) / stock.fairValue : stock.expectedReturn;
+            const newCagr = stock.fairValue > 0 ? Math.pow(update.currentPrice / stock.fairValue, 1/5) - 1 : stock.cagr;
+            
+            const { error } = await supabase
+              .from('saved_stocks')
+              .update({ 
+                current_price: update.currentPrice,
+                expected_return: newExpectedReturn,
+                cagr: newCagr
   if (loading) {
     return (
       <div className="text-center py-8">
