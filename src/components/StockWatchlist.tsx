@@ -53,10 +53,11 @@ export default function StockWatchlist() {
           return {
             id: stock.id,
             ticker: stock.ticker,
-            dcfInputs: stock.dcf_inputs,
+            dcf_inputs: stock.dcf_inputs,
             createdAt: new Date(stock.created_at),
             updatedAt: new Date(stock.updated_at),
             notes: stock.notes || '',
+            userEmail: stock.user_email,
             currentPrice,
             fairValue: stock.fair_value,
             expectedReturn: totalReturn,
@@ -111,7 +112,7 @@ export default function StockWatchlist() {
   const startEdit = (stock: SavedStock) => {
     setEditingStock(stock);
     const formData = {
-      ...stock.dcfInputs,
+      ...stock.dcf_inputs,
       currentPrice: stock.currentPrice,
       notes: stock.notes || ''
     };
@@ -198,27 +199,20 @@ export default function StockWatchlist() {
     console.log(`Starting optimized price update for ${stocks.length} stocks (${uniqueSymbols.length} unique symbols)`);
     
     try {
-      // Use the optimized batch fetching
-      const priceMap = await stockPriceService.getMultipleStockPrices(uniqueSymbols);
-      console.log(`Received ${priceMap.size} price updates`);
+      // Fetch current prices for all unique symbols
+      const priceData = await stockPriceService.getCurrentPrices(uniqueSymbols);
+      console.log('Fetched price data:', priceData);
       
-      // Prepare batch updates for database
-      const priceUpdates: { id: string; currentPrice: number; newExpectedReturn: number; newCagr: number }[] = [];
-      
-      stocks.forEach(stock => {
-        const priceData = priceMap.get(stock.ticker);
-        if (priceData && stock.id) {
-          // Recalculate expected return and CAGR with new current price
-          const newExpectedReturn = stock.fairValue > 0 ? (priceData.price - stock.fairValue) / stock.fairValue : stock.expectedReturn;
-          const newCagr = stock.fairValue > 0 ? Math.pow(priceData.price / stock.fairValue, 1/5) - 1 : stock.cagr;
-          
-          priceUpdates.push({
-            id: stock.id,
-            currentPrice: priceData.price,
-            newExpectedReturn,
-            newCagr
-          });
-        }
+      // Create updates array with new prices
+      const priceUpdates = stocks.map(stock => {
+        const newPrice = priceData[stock.ticker];
+        return {
+          id: stock.id,
+          currentPrice: newPrice || stock.currentPrice // Keep existing price if fetch failed
+        };
+      }).filter(update => {
+        const stock = stocks.find(s => s.id === update.id);
+        return stock && update.currentPrice !== stock.currentPrice; // Only update if price changed
       });
       
       console.log('Price updates to apply:', priceUpdates);
@@ -230,13 +224,20 @@ export default function StockWatchlist() {
         
         const updatePromises = batch.map(async (update) => {
           try {
+            // Find the stock to recalculate CAGR
+            const stock = stocks.find(s => s.id === update.id);
+            if (!stock) return { success: false, id: update.id };
+            
+            // Recalculate CAGR with new current price
+            const newExpectedReturn = stock.fairValue > 0 ? (update.currentPrice - stock.fairValue) / stock.fairValue : stock.expectedReturn;
+            const newCagr = stock.fairValue > 0 ? Math.pow(update.currentPrice / stock.fairValue, 1/5) - 1 : stock.cagr;
+            
             const { error } = await supabase
               .from('saved_stocks')
               .update({ 
                 current_price: update.currentPrice,
-                expected_return: update.newExpectedReturn,
-                cagr: update.newCagr
-                // Note: NOT updating updated_at - that should only change when user edits DCF parameters
+                expected_return: newExpectedReturn,
+                cagr: newCagr
               })
               .eq('id', update.id);
             
@@ -284,6 +285,18 @@ export default function StockWatchlist() {
     return daysSinceUpdate > 90;
   };
 
+  const toggleNotesExpansion = (stockId: string) => {
+    setExpandedNotes(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(stockId)) {
+        newSet.delete(stockId);
+      } else {
+        newSet.add(stockId);
+      }
+      return newSet;
+    });
+  };
+
   const handleNotesChange = (notes: string) => {
     if (!editForm) return;
     setEditForm({ ...editForm, notes });
@@ -299,37 +312,50 @@ export default function StockWatchlist() {
       // Status filter
       if (filterBy === 'undervalued') {
         return stock.currentPrice <= stock.fairValue;
-      }
-      if (filterBy === 'overvalued') {
+      } else if (filterBy === 'overvalued') {
         return stock.currentPrice > stock.fairValue;
       }
+      
       return true;
     })
     .sort((a, b) => {
-      let comparison = 0;
+      let aValue: any, bValue: any;
+      
       switch (sortBy) {
+        case 'ticker':
+          aValue = a.ticker;
+          bValue = b.ticker;
+          break;
         case 'expectedReturn':
-          comparison = (b.expectedReturn || 0) - (a.expectedReturn || 0);
+          aValue = a.expectedReturn;
+          bValue = b.expectedReturn;
           break;
         case 'cagr':
-          comparison = (b.cagr || 0) - (a.cagr || 0);
+          aValue = a.cagr;
+          bValue = b.cagr;
           break;
         case 'buyTarget':
-          comparison = (b.buyTarget || 0) - (a.buyTarget || 0);
+          aValue = a.buyTarget;
+          bValue = b.buyTarget;
           break;
         case 'status':
-          const aStatus = getValuationStatus(a);
-          const bStatus = getValuationStatus(b);
-          comparison = aStatus.text.localeCompare(bStatus.text);
+          aValue = getValuationStatus(a).status;
+          bValue = getValuationStatus(b).status;
           break;
         case 'lastUpdated':
-          comparison = b.updatedAt.getTime() - a.updatedAt.getTime();
+          aValue = new Date(a.updatedAt);
+          bValue = new Date(b.updatedAt);
           break;
         default:
-          comparison = a.ticker.localeCompare(b.ticker);
+          aValue = a.ticker;
+          bValue = b.ticker;
       }
       
-      return sortDirection === 'desc' ? comparison : -comparison;
+      if (typeof aValue === 'string') {
+        return sortDirection === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
+      } else {
+        return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
+      }
     });
 
   if (loading) {
@@ -663,11 +689,11 @@ export default function StockWatchlist() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-xs space-y-1">
-                        {stock.dcfInputs && stock.dcfInputs.projectedPrices && (
+                        {stock.dcf_inputs && stock.dcf_inputs.projectedPrices && (
                           <>
-                            <div>1Y: {formatCurrency(stock.dcfInputs.projectedPrices[0] || 0)}</div>
-                            <div>3Y: {formatCurrency(stock.dcfInputs.projectedPrices[2] || 0)}</div>
-                            <div>5Y: {formatCurrency(stock.dcfInputs.projectedPrices[4] || 0)}</div>
+                            <div>1Y: {formatCurrency(stock.dcf_inputs.projectedPrices[0] || 0)}</div>
+                            <div>3Y: {formatCurrency(stock.dcf_inputs.projectedPrices[2] || 0)}</div>
+                            <div>5Y: {formatCurrency(stock.dcf_inputs.projectedPrices[4] || 0)}</div>
                           </>
                         )}
                       </div>
