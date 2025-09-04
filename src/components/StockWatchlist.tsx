@@ -53,11 +53,10 @@ export default function StockWatchlist() {
           return {
             id: stock.id,
             ticker: stock.ticker,
-            dcf_inputs: stock.dcf_inputs,
+            dcfInputs: stock.dcf_inputs,
             createdAt: new Date(stock.created_at),
             updatedAt: new Date(stock.updated_at),
             notes: stock.notes || '',
-            userEmail: stock.user_email,
             currentPrice,
             fairValue: stock.fair_value,
             expectedReturn: totalReturn,
@@ -112,7 +111,7 @@ export default function StockWatchlist() {
   const startEdit = (stock: SavedStock) => {
     setEditingStock(stock);
     const formData = {
-      ...stock.dcf_inputs,
+      ...stock.dcfInputs,
       currentPrice: stock.currentPrice,
       notes: stock.notes || ''
     };
@@ -204,14 +203,20 @@ export default function StockWatchlist() {
       console.log(`Received ${priceMap.size} price updates`);
       
       // Prepare batch updates for database
-      const priceUpdates: { id: string; currentPrice: number }[] = [];
+      const priceUpdates: { id: string; currentPrice: number; newExpectedReturn: number; newCagr: number }[] = [];
       
       stocks.forEach(stock => {
         const priceData = priceMap.get(stock.ticker);
         if (priceData && stock.id) {
+          // Recalculate expected return and CAGR with new current price
+          const newExpectedReturn = stock.fairValue > 0 ? (priceData.price - stock.fairValue) / stock.fairValue : stock.expectedReturn;
+          const newCagr = stock.fairValue > 0 ? Math.pow(priceData.price / stock.fairValue, 1/5) - 1 : stock.cagr;
+          
           priceUpdates.push({
             id: stock.id,
-            currentPrice: priceData.price
+            currentPrice: priceData.price,
+            newExpectedReturn,
+            newCagr
           });
         }
       });
@@ -225,20 +230,13 @@ export default function StockWatchlist() {
         
         const updatePromises = batch.map(async (update) => {
           try {
-            // Find the stock to recalculate CAGR
-            const stock = stocks.find(s => s.id === update.id);
-            if (!stock) return { success: false, id: update.id };
-            
-            // Recalculate CAGR with new current price
-            const newExpectedReturn = stock.fairValue > 0 ? (update.currentPrice - stock.fairValue) / stock.fairValue : stock.expectedReturn;
-            const newCagr = stock.fairValue > 0 ? Math.pow(update.currentPrice / stock.fairValue, 1/5) - 1 : stock.cagr;
-            
             const { error } = await supabase
               .from('saved_stocks')
               .update({ 
                 current_price: update.currentPrice,
-                expected_return: newExpectedReturn,
-                cagr: newCagr
+                expected_return: update.newExpectedReturn,
+                cagr: update.newCagr
+                // Note: NOT updating updated_at - that should only change when user edits DCF parameters
               })
               .eq('id', update.id);
             
@@ -286,64 +284,54 @@ export default function StockWatchlist() {
     return daysSinceUpdate > 90;
   };
 
-  const toggleNotesExpansion = (stockId: string) => {
-    setExpandedNotes(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(stockId)) {
-        newSet.delete(stockId);
-      } else {
-        newSet.add(stockId);
-      }
-      return newSet;
-    });
-  };
-
   const handleNotesChange = (notes: string) => {
     if (!editForm) return;
     setEditForm({ ...editForm, notes });
   };
 
   const filteredAndSortedStocks = stocks
-          const enrichedStocks: SavedStock[] = data.map(stock => ({
-            id: stock.id,
-            ticker: stock.ticker,
-            dcf_inputs: stock.dcf_inputs,
-            createdAt: new Date(stock.created_at),
-            updatedAt: new Date(stock.updated_at),
-            notes: stock.notes || '',
-            userEmail: stock.user_email,
-            currentPrice: stock.current_price,
-            fairValue: stock.fair_value,
-            expectedReturn: stock.expected_return,
-            cagr: stock.cagr,
-            buyTarget: stock.buy_target
-          }));
-        }
-      });
+    .filter(stock => {
+      // Search filter
+      if (searchTerm && !stock.ticker.toLowerCase().includes(searchTerm.toLowerCase())) {
+        return false;
+      }
       
-      console.log('Price updates to apply:', priceUpdates);
+      // Status filter
+      if (filterBy === 'undervalued') {
+        return stock.currentPrice <= stock.fairValue;
+      }
+      if (filterBy === 'overvalued') {
+        return stock.currentPrice > stock.fairValue;
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      let comparison = 0;
+      switch (sortBy) {
+        case 'expectedReturn':
+          comparison = (b.expectedReturn || 0) - (a.expectedReturn || 0);
+          break;
+        case 'cagr':
+          comparison = (b.cagr || 0) - (a.cagr || 0);
+          break;
+        case 'buyTarget':
+          comparison = (b.buyTarget || 0) - (a.buyTarget || 0);
+          break;
+        case 'status':
+          const aStatus = getValuationStatus(a);
+          const bStatus = getValuationStatus(b);
+          comparison = aStatus.text.localeCompare(bStatus.text);
+          break;
+        case 'lastUpdated':
+          comparison = b.updatedAt.getTime() - a.updatedAt.getTime();
+          break;
+        default:
+          comparison = a.ticker.localeCompare(b.ticker);
+      }
       
-      // Batch update database - process in chunks of 10
-      const UPDATE_BATCH_SIZE = 10;
-      for (let i = 0; i < priceUpdates.length; i += UPDATE_BATCH_SIZE) {
-        const batch = priceUpdates.slice(i, i + UPDATE_BATCH_SIZE);
-        
-        const updatePromises = batch.map(async (update) => {
-          try {
-            // Find the stock to recalculate CAGR
-            const stock = stocks.find(s => s.id === update.id);
-            if (!stock) return { success: false, id: update.id };
-            
-            // Recalculate CAGR with new current price
-            const newExpectedReturn = stock.fairValue > 0 ? (update.currentPrice - stock.fairValue) / stock.fairValue : stock.expectedReturn;
-            const newCagr = stock.fairValue > 0 ? Math.pow(update.currentPrice / stock.fairValue, 1/5) - 1 : stock.cagr;
-            
-            const { error } = await supabase
-              .from('saved_stocks')
-              .update({ 
-                current_price: update.currentPrice,
-                expected_return: newExpectedReturn,
-                cagr: newCagr
+      return sortDirection === 'desc' ? comparison : -comparison;
+    });
+
   if (loading) {
     return (
       <div className="text-center py-8">
@@ -675,11 +663,11 @@ export default function StockWatchlist() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-xs space-y-1">
-                        {stock.dcf_inputs && stock.dcf_inputs.projectedPrices && (
+                        {stock.dcfInputs && stock.dcfInputs.projectedPrices && (
                           <>
-                            <div>1Y: {formatCurrency(stock.dcf_inputs.projectedPrices[0] || 0)}</div>
-                            <div>3Y: {formatCurrency(stock.dcf_inputs.projectedPrices[2] || 0)}</div>
-                            <div>5Y: {formatCurrency(stock.dcf_inputs.projectedPrices[4] || 0)}</div>
+                            <div>1Y: {formatCurrency(stock.dcfInputs.projectedPrices[0] || 0)}</div>
+                            <div>3Y: {formatCurrency(stock.dcfInputs.projectedPrices[2] || 0)}</div>
+                            <div>5Y: {formatCurrency(stock.dcfInputs.projectedPrices[4] || 0)}</div>
                           </>
                         )}
                       </div>
