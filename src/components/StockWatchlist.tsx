@@ -199,20 +199,21 @@ export default function StockWatchlist() {
     console.log(`Starting optimized price update for ${stocks.length} stocks (${uniqueSymbols.length} unique symbols)`);
     
     try {
-      // Fetch current prices for all unique symbols
-      const priceData = await stockPriceService.getMultipleStockPrices(uniqueSymbols);
-      console.log('Fetched price data:', priceData);
+      // Use the optimized batch fetching
+      const priceMap = await stockPriceService.getMultipleStockPrices(uniqueSymbols);
+      console.log(`Received ${priceMap.size} price updates`);
       
-      // Create updates array with new prices
-      const priceUpdates = stocks.map(stock => {
-        const newPrice = priceData.get(stock.ticker)?.price;
-        return {
-          id: stock.id,
-          currentPrice: newPrice || stock.currentPrice // Keep existing price if fetch failed
-        };
-      }).filter(update => {
-        const stock = stocks.find(s => s.id === update.id);
-        return stock && update.currentPrice !== stock.currentPrice; // Only update if price changed
+      // Prepare batch updates for database
+      const priceUpdates: { id: string; currentPrice: number }[] = [];
+      
+      stocks.forEach(stock => {
+        const priceData = priceMap.get(stock.ticker);
+        if (priceData) {
+          priceUpdates.push({
+            id: stock.id!,
+            currentPrice: priceData.price
+          });
+        }
       });
       
       console.log('Price updates to apply:', priceUpdates);
@@ -224,21 +225,9 @@ export default function StockWatchlist() {
         
         const updatePromises = batch.map(async (update) => {
           try {
-            // Find the stock to recalculate CAGR
-            const stock = stocks.find(s => s.id === update.id);
-            if (!stock) return { success: false, id: update.id };
-            
-            // Recalculate CAGR with new current price
-            const newExpectedReturn = stock.fairValue > 0 ? (update.currentPrice - stock.fairValue) / stock.fairValue : stock.expectedReturn;
-            const newCagr = stock.fairValue > 0 ? Math.pow(update.currentPrice / stock.fairValue, 1/5) - 1 : stock.cagr;
-            
             const { error } = await supabase
               .from('saved_stocks')
-              .update({ 
-                current_price: update.currentPrice,
-                expected_return: newExpectedReturn,
-                cagr: newCagr
-              })
+              .update({ current_price: update.currentPrice })
               .eq('id', update.id);
             
             if (error) throw error;
@@ -309,53 +298,37 @@ export default function StockWatchlist() {
         return false;
       }
       
-      // Status filter
-      if (filterBy === 'undervalued') {
-        return stock.currentPrice <= stock.fairValue;
-      } else if (filterBy === 'overvalued') {
-        return stock.currentPrice > stock.fairValue;
-      }
-      
+      // Valuation filter
+      if (filterBy === 'undervalued') return stock.currentPrice < stock.fairValue;
+      if (filterBy === 'overvalued') return stock.currentPrice > stock.fairValue;
       return true;
     })
     .sort((a, b) => {
-      let aValue: any, bValue: any;
-      
+      let comparison = 0;
       switch (sortBy) {
-        case 'ticker':
-          aValue = a.ticker;
-          bValue = b.ticker;
-          break;
         case 'expectedReturn':
-          aValue = a.expectedReturn;
-          bValue = b.expectedReturn;
+          comparison = b.expectedReturn - a.expectedReturn;
           break;
         case 'cagr':
-          aValue = a.cagr;
-          bValue = b.cagr;
+          comparison = b.cagr - a.cagr;
           break;
         case 'buyTarget':
-          aValue = a.buyTarget;
-          bValue = b.buyTarget;
+          comparison = a.buyTarget - b.buyTarget;
           break;
         case 'status':
-          aValue = getValuationStatus(a).status;
-          bValue = getValuationStatus(b).status;
+          const statusOrder = { 'strong-buy': 0, 'buy': 1, 'hold': 2, 'overvalued': 3 };
+          const aStatus = getValuationStatus(a).status;
+          const bStatus = getValuationStatus(b).status;
+          comparison = statusOrder[aStatus] - statusOrder[bStatus];
           break;
         case 'lastUpdated':
-          aValue = new Date(a.updatedAt);
-          bValue = new Date(b.updatedAt);
+          comparison = new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
           break;
         default:
-          aValue = a.ticker;
-          bValue = b.ticker;
+          comparison = a.ticker.localeCompare(b.ticker);
       }
       
-      if (typeof aValue === 'string') {
-        return sortDirection === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
-      } else {
-        return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
-      }
+      return sortDirection === 'desc' ? comparison : -comparison;
     });
 
   if (loading) {
