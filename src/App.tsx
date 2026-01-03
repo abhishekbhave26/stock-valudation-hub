@@ -172,33 +172,33 @@ function App() {
       <header className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
               <div className="p-2 bg-blue-600 rounded-lg">
                 <BarChart3 className="w-6 h-6 text-white" />
               </div>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">StockValuation Pro</h1>
-                <p className="text-sm text-gray-500">DCF Analysis & Portfolio Tracking</p>
+              <div className="min-w-0">
+                <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">StockValuation Pro</h1>
+                <p className="text-xs sm:text-sm text-gray-500 hidden sm:block">DCF Analysis & Portfolio Tracking</p>
               </div>
             </div>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 text-sm text-gray-600">
+            <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
+              <div className="hidden md:flex items-center gap-2 text-sm text-gray-600">
                 <User className="w-4 h-4" />
-                <span>{user.user_metadata?.username || user.email}</span>
+                <span className="truncate max-w-32">{user.user_metadata?.username || user.email}</span>
               </div>
               <button
                 onClick={() => setShowChangePassword(true)}
-                className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                className="hidden sm:flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
               >
                 <Lock className="w-4 h-4" />
-                Change Password
+                <span className="hidden lg:inline">Change Password</span>
               </button>
               <button
                 onClick={handleLogout}
-                className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
               >
                 <LogOut className="w-4 h-4" />
-                Logout
+                <span className="hidden sm:inline">Logout</span>
               </button>
             </div>
           </div>
@@ -208,21 +208,27 @@ function App() {
       {/* Navigation Tabs */}
       <nav className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex space-x-8">
+          <div className="flex space-x-2 sm:space-x-4 lg:space-x-8 overflow-x-auto scrollbar-hide">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               return (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as typeof activeTab)}
-                  className={`flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                  className={`flex items-center gap-1 sm:gap-2 py-4 px-2 sm:px-3 lg:px-4 border-b-2 font-medium text-xs sm:text-sm transition-colors whitespace-nowrap ${
                     activeTab === tab.id
                       ? 'border-blue-500 text-blue-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
                   <Icon className="w-4 h-4" />
-                  {tab.label}
+                  <span className="hidden sm:inline lg:inline">{tab.label}</span>
+                  <span className="sm:hidden">
+                    {tab.id === 'watchlist' ? 'Watch' : 
+                     tab.id === 'dcf' ? 'DCF' : 
+                     tab.id === 'portfolio' ? 'Portfolio' : 
+                     tab.id === 'about' ? 'About' : 'Contact'}
+                  </span>
                 </button>
               );
             })}
