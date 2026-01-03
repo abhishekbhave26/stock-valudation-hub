@@ -338,6 +338,12 @@ export default function PortfolioTracker() {
     return Math.pow(totalPortfolioValue / totalCost, 1 / avgYears) - 1;
   })();
 
+  // Define colors array before using it
+  const COLORS = [
+    '#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', 
+    '#82CA9D', '#FFC658', '#FF7C7C', '#8DD1E1', '#D084D0'
+  ];
+
   // Prepare data for visualizations
   const pieChartData = portfolioStocks.map((stock, index) => ({
     name: stock.ticker,
@@ -349,11 +355,6 @@ export default function PortfolioTracker() {
     ticker: stock.ticker,
     totalReturn: (stock.totalReturn || 0) * 100
   }));
-
-  const COLORS = [
-    '#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', 
-    '#82CA9D', '#FFC658', '#FF7C7C', '#8DD1E1', '#D084D0'
-  ];
 
   return (
     <div className="space-y-6">
