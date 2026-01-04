@@ -462,78 +462,83 @@ export default function PortfolioTracker() {
 
       {/* Controls */}
       <div className="bg-white rounded-xl shadow-lg p-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Filter className="w-4 h-4 text-gray-500" />
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-                className="px-3 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="ticker">Sort by Ticker</option>
-                <option value="totalReturn">Sort by Return</option>
-                <option value="cagr">Sort by CAGR</option>
-                <option value="totalValue">Sort by Total Value</option>
-                <option value="purchaseDate">Sort by Purchase Date</option>
-              </select>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+            {/* First row on mobile: Sort and filter controls */}
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 flex-1">
+              <div className="grid grid-cols-2 sm:flex gap-2 sm:gap-3">
+                <div className="flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-gray-500 hidden sm:block" />
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                    className="px-3 py-2 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 min-w-0"
+                  >
+                    <option value="ticker">Sort: Ticker</option>
+                    <option value="totalReturn">Sort: Return</option>
+                    <option value="cagr">Sort: CAGR</option>
+                    <option value="totalValue">Sort: Value</option>
+                    <option value="purchaseDate">Sort: Date</option>
+                  </select>
+                </div>
+                
+                <select
+                  value={sortDirection}
+                  onChange={(e) => setSortDirection(e.target.value as 'asc' | 'desc')}
+                  className="px-3 py-2 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 min-w-0"
+                >
+                  <option value="desc">↓ Desc</option>
+                  <option value="asc">↑ Asc</option>
+                </select>
+              </div>
               
               <select
-                value={sortDirection}
-                onChange={(e) => setSortDirection(e.target.value as 'asc' | 'desc')}
-                className="px-3 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500"
+                value={filterBy}
+                onChange={(e) => setFilterBy(e.target.value as typeof filterBy)}
+                className="px-3 py-2 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 min-w-0"
               >
-                <option value="desc">Descending</option>
-                <option value="asc">Ascending</option>
+                <option value="all">All Stocks</option>
+                <option value="positive">Profitable</option>
+                <option value="negative">Losing</option>
               </select>
+              
+              <div className="flex items-center gap-1 border border-gray-300 rounded">
+                <button
+                  onClick={() => setViewMode('tile')}
+                  className={`p-2 ${viewMode === 'tile' ? 'bg-blue-500 text-white' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  <Grid className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={`p-2 ${viewMode === 'list' ? 'bg-blue-500 text-white' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  <List className="w-4 h-4" />
+                </button>
+              </div>
             </div>
             
-            <select
-              value={filterBy}
-              onChange={(e) => setFilterBy(e.target.value as typeof filterBy)}
-              className="px-3 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">All Stocks</option>
-              <option value="positive">Profitable</option>
-              <option value="negative">Losing</option>
-            </select>
-            
-            <div className="flex items-center gap-1 border border-gray-300 rounded">
+            {/* Second row on mobile: Action buttons */}
+            <div className="flex flex-col sm:flex-row gap-2">
               <button
-                onClick={() => setViewMode('tile')}
-                className={`p-2 ${viewMode === 'tile' ? 'bg-blue-500 text-white' : 'text-gray-500 hover:text-gray-700'}`}
+                onClick={() => setShowAddForm(!showAddForm)}
+                className="flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap"
               >
-                <Grid className="w-4 h-4" />
+                <Plus className="w-4 h-4" />
+                Add Stock
               </button>
+            
               <button
-                onClick={() => setViewMode('list')}
-                className={`p-2 ${viewMode === 'list' ? 'bg-blue-500 text-white' : 'text-gray-500 hover:text-gray-700'}`}
+                onClick={updateAllCurrentPrices}
+                disabled={updatingPrices || portfolioStocks.length === 0}
+                className="flex items-center justify-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                title="Update all current prices"
               >
-                <List className="w-4 h-4" />
+                <RefreshCw className={`w-4 h-4 ${updatingPrices ? 'animate-spin' : ''}`} />
+                {updatingPrices ? 'Updating...' : 'Update Prices'}
               </button>
             </div>
           </div>
-          
-          <div className="flex gap-2">
-            <button
-              onClick={() => setShowAddForm(!showAddForm)}
-              className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              Add Stock
-            </button>
-          
-            <button
-              onClick={updateAllCurrentPrices}
-              disabled={updatingPrices || portfolioStocks.length === 0}
-              className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              title="Update all current prices"
-            >
-              <RefreshCw className={`w-4 h-4 ${updatingPrices ? 'animate-spin' : ''}`} />
-              {updatingPrices ? 'Updating...' : 'Update Prices'}
-            </button>
-          </div>
-        </div>
 
         {/* Add Stock Form */}
         {showAddForm && (
