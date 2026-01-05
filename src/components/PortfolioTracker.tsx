@@ -478,6 +478,96 @@ export default function PortfolioTracker() {
           </button>
         </div>
       ) : (
+        <div className="space-y-6">
+          {/* Controls */}
+          <div className="bg-white rounded-xl shadow-lg p-6">
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <h2 className="text-xl font-semibold text-gray-800">Portfolio Holdings</h2>
+                
+                {/* Action Buttons */}
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                  <button
+                    onClick={() => setShowAddForm(true)}
+                    disabled={portfolioStocks.length >= PORTFOLIO_LIMIT}
+                    className="flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Stock
+                  </button>
+                  
+                  <button
+                    onClick={updateAllCurrentPrices}
+                    disabled={updatingPrices || portfolioStocks.length === 0}
+                    className="flex items-center justify-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${updatingPrices ? 'animate-spin' : ''}`} />
+                    {updatingPrices ? 'Updating...' : 'Update Prices'}
+                  </button>
+                </div>
+              </div>
+              
+              {/* Sort, Filter and View Controls */}
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                <div className="grid grid-cols-2 sm:flex gap-2 sm:gap-3">
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 min-w-0"
+                  >
+                    <option value="ticker">Sort: Ticker</option>
+                    <option value="totalReturn">Sort: Return</option>
+                    <option value="cagr">Sort: CAGR</option>
+                    <option value="totalValue">Sort: Value</option>
+                    <option value="purchaseDate">Sort: Date</option>
+                  </select>
+                  
+                  <select
+                    value={sortDirection}
+                    onChange={(e) => setSortDirection(e.target.value as 'asc' | 'desc')}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 min-w-0"
+                  >
+                    <option value="desc">↓ Desc</option>
+                    <option value="asc">↑ Asc</option>
+                  </select>
+                </div>
+                
+                <div className="grid grid-cols-2 sm:flex gap-2 sm:gap-3">
+                  <select
+                    value={filterBy}
+                    onChange={(e) => setFilterBy(e.target.value as typeof filterBy)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 min-w-0"
+                  >
+                    <option value="all">All Stocks</option>
+                    <option value="positive">Positive</option>
+                    <option value="negative">Negative</option>
+                  </select>
+                  
+                  <div className="flex bg-gray-100 rounded-lg p-1">
+                    <button
+                      onClick={() => setViewMode('list')}
+                      className={`flex items-center gap-1 px-3 py-1 rounded text-sm transition-colors ${
+                        viewMode === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600'
+                      }`}
+                    >
+                      <List className="w-4 h-4" />
+                      <span className="hidden sm:inline">List</span>
+                    </button>
+                    <button
+                      onClick={() => setViewMode('tile')}
+                      className={`flex items-center gap-1 px-3 py-1 rounded text-sm transition-colors ${
+                        viewMode === 'tile' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600'
+                      }`}
+                    >
+                      <Grid className="w-4 h-4" />
+                      <span className="hidden sm:inline">Tile</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
         viewMode === 'tile' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredAndSortedStocks.map((stock) => (
