@@ -516,10 +516,11 @@ export default function StockWatchlist() {
                       </thead>
                       <tbody className="divide-y divide-gray-200">
                         {editResults.projectedPrices.map((price, index) => {
-                          const currentYear = new Date().getFullYear();
+                          const baseYear = new Date(editingStock.updatedAt).getFullYear();
+                          // const currentYear = new Date().getFullYear();
                           return (
                             <tr key={index}>
-                              <td className="px-2 py-1">{currentYear + index + 1}</td>
+                              <td className="px-2 py-1">{baseYear + index + 1}</td>
                               <td className="px-2 py-1 font-medium text-gray-700">${editResults.projectedValues[index].toFixed(2)}</td>
                               <td className="px-2 py-1 font-medium text-blue-600">{formatCurrency(price)}</td>
                               <td className="px-2 py-1">{editForm.growthRates[index]}%</td>
