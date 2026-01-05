@@ -517,7 +517,6 @@ export default function StockWatchlist() {
                       <tbody className="divide-y divide-gray-200">
                         {editResults.projectedPrices.map((price, index) => {
                           const baseYear = new Date(editingStock.updatedAt).getFullYear();
-                          // const currentYear = new Date().getFullYear();
                           return (
                             <tr key={index}>
                               <td className="px-2 py-1">{baseYear + index + 1}</td>
