@@ -645,62 +645,6 @@ export default function StockWatchlist() {
           </div>
         </div>
       </div>
-            <button
-              onClick={updateAllCurrentPrices}
-              disabled={updatingPrices || stocks.length === 0}
-              className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              title="Update all current prices"
-            >
-              <RefreshCw className={`w-4 h-4 ${updatingPrices ? 'animate-spin' : ''}`} />
-              {updatingPrices ? 'Updating...' : 'Update Prices'}
-            </button>
-            
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search stocks..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent w-48"
-              />
-            </div>
-            
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="ticker">Sort by Ticker</option>
-              <option value="expectedReturn">Sort by Expected Return</option>
-              <option value="cagr">Sort by CAGR</option>
-              <option value="buyTarget">Sort by Buy Target</option>
-              <option value="status">Sort by Status</option>
-              <option value="lastUpdated">Sort by Last Updated</option>
-            </select>
-            
-            <select
-              value={sortDirection}
-              onChange={(e) => setSortDirection(e.target.value as 'asc' | 'desc')}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="desc">Descending</option>
-              <option value="asc">Ascending</option>
-            </select>
-            
-            <select
-              value={filterBy}
-              onChange={(e) => setFilterBy(e.target.value as typeof filterBy)}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">All Stocks</option>
-              <option value="undervalued">Undervalued</option>
-              <option value="overvalued">Overvalued</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
       {/* Stock Table */}
       <div className="bg-white rounded-xl shadow-lg overflow-hidden">
         <div className="overflow-x-auto">
