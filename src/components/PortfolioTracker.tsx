@@ -861,6 +861,102 @@ export default function PortfolioTracker() {
           </div>
         </div>
       )}
+
+      {/* Add Stock Modal */}
+      {showAddForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
+            <h3 className="text-xl font-semibold mb-4">Add New Stock</h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Ticker Symbol</label>
+                <input
+                  type="text"
+                  value={newStock.ticker}
+                  onChange={(e) => setNewStock(prev => ({ ...prev, ticker: e.target.value.toUpperCase() }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g., AAPL"
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+                  <input
+                    type="number"
+                    value={newStock.quantity || ''}
+                    onChange={(e) => setNewStock(prev => ({ ...prev, quantity: Number(e.target.value) }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                    placeholder="100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Buy Price ($)</label>
+                  <input
+                    type="number"
+                    value={newStock.buyPrice || ''}
+                    onChange={(e) => setNewStock(prev => ({ ...prev, buyPrice: Number(e.target.value) }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                    placeholder="150.00"
+                    step="0.01"
+                  />
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Purchase Date</label>
+                  <input
+                    type="date"
+                    value={newStock.purchaseDate}
+                    onChange={(e) => setNewStock(prev => ({ ...prev, purchaseDate: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Current Price ($)</label>
+                  <div className="flex">
+                    <input
+                      type="number"
+                      value={newStock.currentPrice || ''}
+                      onChange={(e) => setNewStock(prev => ({ ...prev, currentPrice: Number(e.target.value) }))}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-l focus:ring-2 focus:ring-blue-500"
+                      placeholder="155.00"
+                      step="0.01"
+                    />
+                    <button
+                      type="button"
+                      onClick={fetchCurrentPriceForNewStock}
+                      disabled={!newStock.ticker || fetchingNewStockPrice}
+                      className="px-3 py-2 bg-blue-600 text-white rounded-r hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Fetch current price"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${fetchingNewStockPrice ? 'animate-spin' : ''}`} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={addStock}
+                disabled={!newStock.ticker || newStock.quantity <= 0 || newStock.buyPrice <= 0 || newStock.currentPrice <= 0}
+                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Add Stock
+              </button>
+              <button
+                onClick={() => setShowAddForm(false)}
+                className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
