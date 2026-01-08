@@ -49,7 +49,16 @@ export default function StockWatchlist() {
         const enrichedStocks: SavedStock[] = data.map(stock => {
           const currentPrice = stock.current_price;
           const totalReturn = currentPrice > 0 && stock.fair_value > 0 ? (currentPrice - stock.fair_value) / stock.fair_value : stock.expected_return;
-          
+
+          // Recalculate CAGR from current price to terminal value (5Y projected price)
+          let cagr = stock.cagr;
+          if (stock.dcf_inputs && stock.dcf_inputs.projectedPrices && stock.dcf_inputs.projectedPrices.length >= 5) {
+            const terminalValue = stock.dcf_inputs.projectedPrices[4];
+            if (currentPrice > 0 && terminalValue > 0) {
+              cagr = Math.pow(terminalValue / currentPrice, 1/5) - 1;
+            }
+          }
+
           return {
             id: stock.id,
             ticker: stock.ticker,
@@ -61,7 +70,7 @@ export default function StockWatchlist() {
             currentPrice,
             fairValue: stock.fair_value,
             expectedReturn: totalReturn,
-            cagr: stock.cagr,
+            cagr: cagr,
             buyTarget: stock.buy_target
           };
         });
@@ -227,13 +236,14 @@ export default function StockWatchlist() {
           try {
             // Recalculate CAGR and expected return based on new price
             const stock = stocks.find(s => s.id === update.id);
-            if (stock) {
+            if (stock && stock.dcf_inputs && stock.dcf_inputs.projectedPrices && stock.dcf_inputs.projectedPrices.length >= 5) {
+              const terminalValue = stock.dcf_inputs.projectedPrices[4];
               const newExpectedReturn = stock.fairValue > 0 ? (update.currentPrice - stock.fairValue) / stock.fairValue : stock.expectedReturn;
-              const newCagr = stock.fairValue > 0 ? Math.pow(update.currentPrice / stock.fairValue, 1/5) - 1 : stock.cagr;
-              
+              const newCagr = terminalValue > 0 && update.currentPrice > 0 ? Math.pow(terminalValue / update.currentPrice, 1/5) - 1 : stock.cagr;
+
               const { error } = await supabase
                 .from('saved_stocks')
-                .update({ 
+                .update({
                   current_price: update.currentPrice,
                   expected_return: newExpectedReturn,
                   cagr: newCagr
