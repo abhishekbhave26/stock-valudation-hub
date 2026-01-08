@@ -32,6 +32,16 @@ export default function PortfolioTracker() {
     currentPrice: 0
   });
 
+  const resetNewStock = () => {
+    setNewStock({
+      ticker: '',
+      quantity: 0,
+      buyPrice: 0,
+      purchaseDate: new Date().toISOString().split('T')[0],
+      currentPrice: 0
+    });
+  };
+
   useEffect(() => {
     loadPortfolio();
   }, [user]);
@@ -117,7 +127,13 @@ export default function PortfolioTracker() {
   };
 
   const addStock = async () => {
-    if (!newStock.ticker || newStock.quantity <= 0 || newStock.buyPrice <= 0 || newStock.currentPrice <= 0) return;
+    if (!user?.email) {
+      alert('Please sign in to add stocks to your portfolio.');
+      return;
+    }
+
+    if (!newStock.ticker || newStock.quantity <= 0 || newStock.buyPrice <= 0) return;
+    const resolvedCurrentPrice = newStock.currentPrice > 0 ? newStock.currentPrice : newStock.buyPrice;
 
     // Check portfolio limit before adding
     if (portfolioStocks.length >= PORTFOLIO_LIMIT) {
@@ -133,19 +149,13 @@ export default function PortfolioTracker() {
           quantity: newStock.quantity,
           buy_price: newStock.buyPrice,
           purchase_date: newStock.purchaseDate,
-          current_price: newStock.currentPrice,
+          current_price: resolvedCurrentPrice,
           user_email: user.email
         }]);
 
       if (error) throw error;
 
-      setNewStock({
-        ticker: '',
-        quantity: 0,
-        buyPrice: 0,
-        purchaseDate: new Date().toISOString().split('T')[0],
-        currentPrice: 0
-      });
+      resetNewStock();
       setShowAddForm(false);
       loadPortfolio();
     } catch (error) {
@@ -786,6 +796,103 @@ export default function PortfolioTracker() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Add Stock Modal */}
+      {showAddForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-semibold mb-4">Add Stock</h3>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Ticker</label>
+                  <input
+                    type="text"
+                    value={newStock.ticker}
+                    onChange={(e) => setNewStock(prev => ({ ...prev, ticker: e.target.value.toUpperCase() }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                    placeholder="AAPL"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+                  <input
+                    type="number"
+                    value={newStock.quantity || ''}
+                    onChange={(e) => setNewStock(prev => ({ ...prev, quantity: Number(e.target.value) }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                    min="0"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Buy Price</label>
+                  <input
+                    type="number"
+                    value={newStock.buyPrice || ''}
+                    onChange={(e) => setNewStock(prev => ({ ...prev, buyPrice: Number(e.target.value) }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                    step="0.01"
+                    min="0"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Current Price</label>
+                  <input
+                    type="number"
+                    value={newStock.currentPrice || ''}
+                    onChange={(e) => setNewStock(prev => ({ ...prev, currentPrice: Number(e.target.value) }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                    step="0.01"
+                    min="0"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={fetchCurrentPriceForNewStock}
+                  disabled={fetchingNewStockPrice || !newStock.ticker}
+                  className="flex items-center gap-2 bg-gray-100 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <RefreshCw className={`w-4 h-4 ${fetchingNewStockPrice ? 'animate-spin' : ''}`} />
+                  {fetchingNewStockPrice ? 'Fetching...' : 'Fetch Current Price'}
+                </button>
+                <span className="text-xs text-gray-500">If empty, current price defaults to buy price.</span>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Purchase Date</label>
+                <input
+                  type="date"
+                  value={newStock.purchaseDate}
+                  onChange={(e) => setNewStock(prev => ({ ...prev, purchaseDate: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={addStock}
+                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+              >
+                Add Stock
+              </button>
+              <button
+                onClick={() => {
+                  setShowAddForm(false);
+                  resetNewStock();
+                }}
+                className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
