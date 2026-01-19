@@ -14,7 +14,9 @@ export default function StockWatchlist() {
   const [loading, setLoading] = useState(false);
   const [sortBy, setSortBy] = useState<'ticker' | 'expectedReturn' | 'cagr' | 'buyTarget' | 'status' | 'lastUpdated'>('cagr');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
-  const [filterBy, setFilterBy] = useState<'all' | 'undervalued' | 'overvalued'>('all');
+  const [filterBy, setFilterBy] = useState<
+    'all' | 'undervalued' | 'overvalued' | 'cagr10' | 'cagr15' | 'cagr20'
+  >('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [editingStock, setEditingStock] = useState<SavedStock | null>(null);
   const [editForm, setEditForm] = useState<DCFInputs | null>(null);
@@ -341,6 +343,9 @@ export default function StockWatchlist() {
       // Valuation filter
       if (filterBy === 'undervalued') return stock.currentPrice < stock.fairValue;
       if (filterBy === 'overvalued') return stock.currentPrice > stock.fairValue;
+      if (filterBy === 'cagr10') return stock.cagr >= 0.1;
+      if (filterBy === 'cagr15') return stock.cagr >= 0.15;
+      if (filterBy === 'cagr20') return stock.cagr >= 0.2;
       return true;
     })
     .sort((a, b) => {
@@ -692,6 +697,9 @@ export default function StockWatchlist() {
                 <option value="all">All Stocks</option>
                 <option value="undervalued">Undervalued</option>
                 <option value="overvalued">Overvalued</option>
+                <option value="cagr10">CAGR ~ 10%</option>
+                <option value="cagr15">CAGR ≥ 15%</option>
+                <option value="cagr20">CAGR ~ 20%</option>
               </select>
             </div>
           </div>
