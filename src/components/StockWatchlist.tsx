@@ -411,10 +411,14 @@ export default function StockWatchlist() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Current Price ($)</label>
-                    <div className="w-full px-3 py-2 border border-gray-200 rounded bg-gray-50 text-gray-700">
-                      {formatCurrency(editForm.currentPrice)}
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">Current price is updated automatically</p>
+                    <input
+                      type="number"
+                      value={editForm.currentPrice}
+                      onChange={(e) => handleEditFormChange('currentPrice', parseFloat(e.target.value) || 0)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                      step="0.01"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Auto-updated by default, but you can override it here.</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Desired Return (%)</label>
