@@ -1,40 +1,3 @@
-# Road to EB-5 ($900K Goal)
-
-Production-ready MVP that tracks manual asset snapshots toward a $900,000 EB-5 goal. The frontend is a Vite + React + TypeScript + Tailwind dashboard with Supabase Auth and Postgres persistence.
-
-## Tech stack
-- React + TypeScript + Vite
-- Tailwind CSS
-- Recharts
-- Supabase Auth + Postgres + RLS
-
-## Folder structure
-```
-.
-├── src
-│   ├── pages
-│   │   ├── DashboardPage.tsx
-│   │   ├── LoginPage.tsx
-│   │   └── ResetPasswordPage.tsx
-│   ├── hooks
-│   │   └── useAuth.ts
-│   ├── lib
-│   │   └── supabase.ts
-│   ├── types
-│   │   └── index.ts
-│   ├── utils
-│   │   └── finance.ts
-│   ├── App.tsx
-│   └── main.tsx
-├── supabase
-│   └── migrations
-└── .env.example
-```
-
-## Supabase SQL (tables + RLS)
-Use the migration in `supabase/migrations/20250902090000_eb5_goal.sql`, or run the SQL below directly.
-
-```sql
 create extension if not exists "pgcrypto";
 
 create table if not exists profiles (
@@ -90,27 +53,3 @@ create policy "Snapshots are updatable by owner"
 create policy "Snapshots are deletable by owner"
   on snapshots for delete
   using (auth.uid() = user_id);
-```
-
-## Local development
-1. Copy `.env.example` to `.env` and add your Supabase credentials.
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Run the dev server:
-   ```bash
-   npm run dev
-   ```
-
-## Deployment (Netlify/Vercel)
-1. Set environment variables:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-2. Build command: `npm run build`
-3. Publish directory: `dist`
-
-## Notes
-- Use Supabase Auth email/password login, signup, and reset password flows.
-- All snapshots and profiles are protected by RLS.
-- Use the **Seed sample data** button in the dashboard to insert a few example snapshots.

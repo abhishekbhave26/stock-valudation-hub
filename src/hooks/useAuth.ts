@@ -50,7 +50,7 @@ export function useAuth() {
     }
   };
 
-  const signUp = async (email: string, password: string, username: string) => {
+  const signUp = async (email: string, password: string) => {
     setLoading(true);
     setError(null);
     
@@ -59,9 +59,6 @@ export function useAuth() {
         email,
         password,
         options: {
-          data: {
-            username: username,
-          },
           // Keep user logged in for 7 days after signup
           persistSession: true
         }

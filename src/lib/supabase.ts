@@ -1,7 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://placeholder.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'placeholder-anon-key';
+const supabaseUrl =
+  import.meta.env.VITE_SUPABASE_URL ||
+  import.meta.env.NEXT_PUBLIC_SUPABASE_URL ||
+  'https://placeholder.supabase.co';
+const supabaseAnonKey =
+  import.meta.env.VITE_SUPABASE_ANON_KEY ||
+  import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  'placeholder-anon-key';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -18,71 +24,71 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 export type Database = {
   public: {
     Tables: {
-      saved_stocks: {
+      profiles: {
         Row: {
           id: string;
-          ticker: string;
-          current_price: number;
-          fair_value: number;
-          expected_return: number;
-          cagr: number;
-          buy_target: number;
-          dcf_inputs: any;
           created_at: string;
-          updated_at: string;
-          notes: string;
+          email: string | null;
+          goal_amount: number;
         };
         Insert: {
-          id?: string;
-          ticker: string;
-          current_price: number;
-          fair_value: number;
-          expected_return: number;
-          cagr: number;
-          buy_target: number;
-          dcf_inputs: any;
+          id: string;
           created_at?: string;
-          updated_at?: string;
-          notes?: string;
+          email?: string | null;
+          goal_amount?: number;
         };
         Update: {
           id?: string;
-          ticker?: string;
-          current_price?: number;
-          fair_value?: number;
-          expected_return?: number;
-          cagr?: number;
-          buy_target?: number;
-          dcf_inputs?: any;
           created_at?: string;
-          updated_at?: string;
-          notes?: string;
+          email?: string | null;
+          goal_amount?: number;
         };
       };
-      portfolio_stocks: {
+      snapshots: {
         Row: {
           id: string;
-          ticker: string;
-          quantity: number;
-          buy_price: number;
-          purchase_date: string;
+          user_id: string;
           created_at: string;
+          as_of_date: string;
+          my_robinhood_portfolio: number;
+          girlfriend_robinhood_portfolio: number;
+          girlfriend_bank_account: number;
+          my_savings_account: number;
+          my_meta_stock_value: number;
+          miscellaneous_assets: number;
+          total_saved: number;
+          goal_amount: number;
+          notes: string | null;
         };
         Insert: {
           id?: string;
-          ticker: string;
-          quantity: number;
-          buy_price: number;
-          purchase_date: string;
+          user_id: string;
           created_at?: string;
+          as_of_date: string;
+          my_robinhood_portfolio?: number;
+          girlfriend_robinhood_portfolio?: number;
+          girlfriend_bank_account?: number;
+          my_savings_account?: number;
+          my_meta_stock_value?: number;
+          miscellaneous_assets?: number;
+          total_saved: number;
+          goal_amount: number;
+          notes?: string | null;
         };
         Update: {
           id?: string;
-          ticker?: string;
-          quantity?: number;
-          buy_price?: number;
-          purchase_date?: string;
+          user_id?: string;
           created_at?: string;
+          as_of_date?: string;
+          my_robinhood_portfolio?: number;
+          girlfriend_robinhood_portfolio?: number;
+          girlfriend_bank_account?: number;
+          my_savings_account?: number;
+          my_meta_stock_value?: number;
+          miscellaneous_assets?: number;
+          total_saved?: number;
+          goal_amount?: number;
+          notes?: string | null;
         };
       };
     };
