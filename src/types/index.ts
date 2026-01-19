@@ -13,6 +13,8 @@ export interface DCFInputs {
   desiredReturn: number;
   growthRates: number[];
   projectedPrices?: number[];
+  notes?: string;
+  investorRelationsLink?: string;
 }
 
 export interface DCFResults {

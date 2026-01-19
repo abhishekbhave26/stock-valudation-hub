@@ -123,7 +123,8 @@ export default function StockWatchlist() {
     const formData = {
       ...stock.dcf_inputs,
       currentPrice: stock.currentPrice,
-      notes: stock.notes || ''
+      notes: stock.notes || '',
+      investorRelationsLink: stock.dcf_inputs?.investorRelationsLink || ''
     };
     setEditForm(formData);
     
@@ -172,6 +173,7 @@ export default function StockWatchlist() {
     try {
       // Recalculate DCF with new inputs
       const { results } = calculateDCF(editForm);
+      const trimmedInvestorRelationsLink = editForm.investorRelationsLink?.trim() || '';
       
       const { error } = await supabase
         .from('saved_stocks')
@@ -184,7 +186,8 @@ export default function StockWatchlist() {
           buy_target: results.buyTargetPrice,
           dcf_inputs: {
             ...editForm,
-            projectedPrices: results.projectedPrices
+            projectedPrices: results.projectedPrices,
+            investorRelationsLink: trimmedInvestorRelationsLink
           },
           notes: editForm.notes || '',
           updated_at: new Date().toISOString()
@@ -315,6 +318,17 @@ export default function StockWatchlist() {
   const handleNotesChange = (notes: string) => {
     if (!editForm) return;
     setEditForm({ ...editForm, notes });
+  };
+
+  const handleInvestorRelationsLinkChange = (investorRelationsLink: string) => {
+    if (!editForm) return;
+    setEditForm({ ...editForm, investorRelationsLink });
+  };
+
+  const getInvestorRelationsUrl = (link?: string) => {
+    const trimmed = link?.trim();
+    if (!trimmed) return '';
+    return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
   };
 
   const filteredAndSortedStocks = stocks
@@ -461,6 +475,34 @@ export default function StockWatchlist() {
                   />
                   <p className="text-xs text-gray-500 mt-1">
                     Track your investment reasoning, key metrics, pros/cons, and analysis updates
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {editForm.ticker}'s Investor Relations page
+                  </label>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <input
+                      type="url"
+                      value={editForm.investorRelationsLink || ''}
+                      onChange={(e) => handleInvestorRelationsLinkChange(e.target.value)}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                      placeholder="https://investor.company.com"
+                    />
+                    {getInvestorRelationsUrl(editForm.investorRelationsLink) && (
+                      <a
+                        href={getInvestorRelationsUrl(editForm.investorRelationsLink)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center justify-center rounded-lg bg-blue-50 px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-100"
+                      >
+                        Open Link
+                      </a>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Add the official investor relations page for quick access.
                   </p>
                 </div>
               </div>
