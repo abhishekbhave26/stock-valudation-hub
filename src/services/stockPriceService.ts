@@ -13,7 +13,7 @@ interface CachedPrice {
 
 class StockPriceService {
   private cache: Map<string, CachedPrice> = new Map();
-  private readonly CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+  private readonly CACHE_DURATION = 4 * 60 * 60 * 1000; // 4 hours in milliseconds
   private readonly API_KEY = import.meta.env.VITE_FINNHUB_API_KEY;
   private readonly BASE_URL = 'https://finnhub.io/api/v1';
   
