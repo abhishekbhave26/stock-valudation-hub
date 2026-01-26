@@ -67,12 +67,9 @@ class StockPriceService {
 
   async getStockPrice(symbol: string): Promise<StockPrice | null> {
     const normalizedSymbol = symbol.toUpperCase();
-    console.log('Getting stock price for:', normalizedSymbol);
-    
     // Check cache first
     const cached = this.cache.get(normalizedSymbol);
     if (cached && this.isCacheValid(cached)) {
-      console.log('Using cached price for', normalizedSymbol, ':', cached.price);
       return {
         symbol: normalizedSymbol,
         price: cached.price,
@@ -84,19 +81,13 @@ class StockPriceService {
     // If no API key, return null
     if (!this.API_KEY) {
       console.error('No Finnhub API key provided. Add VITE_FINNHUB_API_KEY to your .env file');
-      console.log('Current API_KEY value:', this.API_KEY ? 'Present' : 'Missing');
       return null;
     }
-
-    console.log('Fetching from Finnhub API for:', normalizedSymbol);
     
     try {
       // Fetch from Finnhub API
       const url = `${this.BASE_URL}/quote?symbol=${normalizedSymbol}&token=${this.API_KEY}`;
-      console.log('API URL:', url.replace(this.API_KEY, 'HIDDEN_API_KEY'));
-      
       const response = await this.rateLimitedFetch(url);
-      console.log('API Response status:', response.status);
       
       if (!response.ok) {
         console.error('API response not ok:', response.status, response.statusText);
@@ -104,8 +95,6 @@ class StockPriceService {
       }
       
       const data = await response.json();
-      console.log('API Response data:', data);
-      
       // Check for API errors
       if (data.error) {
         console.error('API returned error:', data.error);
@@ -120,8 +109,6 @@ class StockPriceService {
       
       const price = parseFloat(data.c);
       const timestamp = Date.now();
-      console.log('Successfully got price for', normalizedSymbol, ':', price);
-      
       // Cache the result
       const cachedPrice: CachedPrice = {
         price,
@@ -161,8 +148,6 @@ class StockPriceService {
     const results = new Map<string, StockPrice>();
     const uniqueSymbols = [...new Set(symbols.map(s => s.toUpperCase()))];
     
-    console.log(`Fetching prices for ${uniqueSymbols.length} unique symbols in parallel`);
-    
     // Create batches to respect rate limits (30 concurrent requests max)
     const BATCH_SIZE = 30;
     const batches = [];
@@ -173,8 +158,6 @@ class StockPriceService {
     
     // Process batches sequentially, but symbols within each batch in parallel
     for (const batch of batches) {
-      console.log(`Processing batch of ${batch.length} symbols`);
-      
       const batchPromises = batch.map(async (symbol) => {
         try {
           const price = await this.getStockPrice(symbol);
@@ -191,15 +174,12 @@ class StockPriceService {
       // Wait for all requests in this batch to complete
       const batchResults = await Promise.allSettled(batchPromises);
       const successCount = batchResults.filter(r => r.status === 'fulfilled').length;
-      console.log(`Batch completed: ${successCount}/${batch.length} successful`);
-      
       // Small delay between batches to be respectful to the API
       if (batches.indexOf(batch) < batches.length - 1) {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
     
-    console.log(`Price update completed: ${results.size}/${uniqueSymbols.length} prices fetched`);
     return results;
   }
 

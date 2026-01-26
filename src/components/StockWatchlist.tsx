@@ -210,13 +210,9 @@ export default function StockWatchlist() {
     
     setUpdatingPrices(true);
     const uniqueSymbols = [...new Set(stocks.map(stock => stock.ticker))];
-    console.log(`Starting optimized price update for ${stocks.length} stocks (${uniqueSymbols.length} unique symbols)`);
-    
     try {
       // Use the optimized batch fetching
       const priceMap = await stockPriceService.getMultipleStockPrices(uniqueSymbols);
-      console.log(`Received ${priceMap.size} price updates`);
-      
       // Prepare batch updates for database
       const priceUpdates: { id: string; currentPrice: number }[] = [];
       
@@ -229,8 +225,6 @@ export default function StockWatchlist() {
           });
         }
       });
-      
-      console.log('Price updates to apply:', priceUpdates);
       
       // Batch update database - process in chunks of 10
       const UPDATE_BATCH_SIZE = 10;
@@ -279,8 +273,6 @@ export default function StockWatchlist() {
       
       // Reload watchlist to reflect changes
       await loadStocks();
-      
-      console.log(`Price update completed successfully`);
       
     } catch (error) {
       console.error('Failed to update current prices:', error);
