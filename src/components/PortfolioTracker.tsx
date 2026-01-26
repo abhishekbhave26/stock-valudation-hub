@@ -4,7 +4,7 @@ import { PortfolioStock } from '../types';
 import { supabase } from '../lib/supabase';
 import { formatCurrency, formatPercentage } from '../utils/dcf';
 import { format } from 'date-fns';
-import { PieChart as RechartsPieChart, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Pie } from 'recharts';
+import { PieChart as RechartsPieChart, Cell, ResponsiveContainer, Tooltip, Pie } from 'recharts';
 import { stockPriceService } from '../services/stockPriceService';
 import { useAuth } from '../hooks/useAuth';
 
@@ -17,7 +17,6 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
   const [portfolioStocks, setPortfolioStocks] = useState<PortfolioStock[]>([]);
   const [loading, setLoading] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [portfolioView, setPortfolioView] = useState<'holdings' | 'analytics'>('holdings');
   const [sortBy, setSortBy] = useState<'ticker' | 'totalReturn' | 'cagr' | 'totalValue' | 'purchaseDate'>('totalReturn');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [filterBy, setFilterBy] = useState<'all' | 'positive' | 'negative'>('all');
@@ -26,10 +25,6 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
   const [editForm, setEditForm] = useState<any>(null);
   const [updatingPrices, setUpdatingPrices] = useState(false);
   const [fetchingNewStockPrice, setFetchingNewStockPrice] = useState(false);
-  const [snapshots, setSnapshots] = useState<
-    { id: string; snapshot_at: string; total_value: number; total_cost: number; total_return: number }[]
-  >([]);
-  const [loadingSnapshots, setLoadingSnapshots] = useState(false);
 
   const PORTFOLIO_LIMIT = 150;
 
@@ -55,11 +50,6 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
     loadPortfolio();
   }, [user]);
 
-  useEffect(() => {
-    if (portfolioView === 'analytics') {
-      loadSnapshots();
-    }
-  }, [portfolioView, user]);
 
   const loadPortfolio = async () => {
     if (!user?.email) {
@@ -117,30 +107,6 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
       setPortfolioStocks([]);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadSnapshots = async () => {
-    if (!user?.email) {
-      setSnapshots([]);
-      return;
-    }
-
-    setLoadingSnapshots(true);
-    try {
-      const { data, error } = await supabase
-        .from('portfolio_snapshots')
-        .select('*')
-        .eq('user_email', user.email)
-        .order('snapshot_at', { ascending: false });
-
-      if (error) throw error;
-      setSnapshots(data || []);
-    } catch (error) {
-      console.error('Error loading portfolio snapshots:', error);
-      setSnapshots([]);
-    } finally {
-      setLoadingSnapshots(false);
     }
   };
 
@@ -332,8 +298,6 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
 
         if (snapshotError) {
           console.error('Failed to save portfolio snapshot:', snapshotError);
-        } else if (portfolioView === 'analytics') {
-          await loadSnapshots();
         }
       }
       
@@ -409,14 +373,6 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
   const COLORS = isDarkMode
     ? ['#60A5FA', '#34D399', '#FBBF24', '#F97316', '#C4B5FD', '#67E8F9', '#A3E635', '#FCA5A5', '#7DD3FC', '#F9A8D4']
     : ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFC658', '#FF7C7C', '#8DD1E1', '#D084D0'];
-  const chartGridColor = isDarkMode ? '#334155' : '#e5e7eb';
-  const chartTextColor = isDarkMode ? '#cbd5f5' : '#64748b';
-  const tooltipStyles = {
-    backgroundColor: isDarkMode ? '#0f172a' : '#ffffff',
-    borderColor: isDarkMode ? '#334155' : '#e5e7eb',
-    color: isDarkMode ? '#e2e8f0' : '#111827'
-  };
-
   // Prepare data for visualizations
   const pieChartData = portfolioStocks.map((stock, index) => ({
     name: stock.ticker,
@@ -424,37 +380,16 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
     color: COLORS[index % COLORS.length]
   }));
 
-  const barChartData = portfolioStocks.map(stock => {
-    const profitValue = (stock.totalValue || 0) - (stock.buy_price * stock.quantity);
-    const rawContribution = totalCost > 0 ? (profitValue / totalCost) * 100 : 0;
-    const contributionPercent = Math.round(rawContribution * 100) / 100;
-
-    return {
-      ticker: stock.ticker,
-      profitValue,
-      contributionPercent
-    };
-  });
-
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
         <div>
           <h2 className="text-xl font-semibold text-gray-800">Portfolio Tracker</h2>
-          <p className="text-sm text-gray-500">Manage holdings and review portfolio analytics.</p>
+          <p className="text-sm text-gray-500">Manage holdings and keep your portfolio updated.</p>
         </div>
-        <select
-          value={portfolioView}
-          onChange={(e) => setPortfolioView(e.target.value as typeof portfolioView)}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="holdings">Portfolio Holdings</option>
-          <option value="analytics">Portfolio Analytics</option>
-        </select>
       </div>
 
-      {portfolioView === 'holdings' ? (
-        <>
+      <>
           {/* Portfolio Summary */}
           <div className="bg-white rounded-xl shadow-lg p-6">
             <div className="flex items-center gap-3 mb-4">
@@ -535,37 +470,6 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
                 </div>
               </div>
 
-              {/* Performance Bar Chart */}
-              <div className="bg-white rounded-xl shadow-lg p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <TrendingUp className="w-5 h-5 text-green-600" />
-                  <h3 className="text-lg font-semibold text-gray-800">Return Contribution</h3>
-                </div>
-                <div className="h-64">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={barChartData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="ticker" />
-                      <YAxis />
-                      <Tooltip
-                        formatter={(value, name, item) => {
-                          if (name === 'contributionPercent') {
-                            const profitValue = (item?.payload?.profitValue ?? 0) as number;
-                            return [
-                              `${(value as number).toFixed(2)}% (${formatCurrency(profitValue)})`,
-                              'Contribution'
-                            ];
-                          }
-                          return value;
-                        }}
-                      />
-                      <Legend />
-                      <Bar dataKey="contributionPercent" fill="#8884d8" name="Value-Weighted Return %" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                  <p className="text-xs text-gray-500 mt-2">Based on each holding’s profit relative to total invested cost.</p>
-                </div>
-              </div>
             </div>
           )}
 
@@ -1068,54 +972,7 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
           </div>
         </div>
       )}
-        </>
-      ) : (
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <Wallet className="w-5 h-5 text-blue-600" />
-            <h3 className="text-lg font-semibold text-gray-800">Portfolio Snapshots</h3>
-          </div>
-          {loadingSnapshots ? (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-              <p className="text-gray-500 mt-2">Loading snapshots...</p>
-            </div>
-          ) : snapshots.length === 0 ? (
-            <p className="text-sm text-gray-500">No snapshots yet. Update prices to create your first snapshot.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-left">
-                  <tr>
-                    <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Snapshot Date</th>
-                    <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Total Value</th>
-                    <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Total Cost</th>
-                    <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Total Return</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {snapshots.map(snapshot => (
-                    <tr key={snapshot.id}>
-                      <td className="px-4 py-2 text-gray-900">
-                        {format(new Date(snapshot.snapshot_at), 'MMM dd, yyyy HH:mm')}
-                      </td>
-                      <td className="px-4 py-2 text-gray-900">
-                        {formatCurrency(snapshot.total_value)}
-                      </td>
-                      <td className="px-4 py-2 text-gray-700">
-                        {formatCurrency(snapshot.total_cost)}
-                      </td>
-                      <td className={`px-4 py-2 font-medium ${snapshot.total_return >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {formatPercentage(snapshot.total_return)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
+      </>
     </div>
   );
 }
