@@ -31,6 +31,7 @@ export type Database = {
           created_at: string;
           updated_at: string;
           notes: string;
+          is_favorite: boolean;
         };
         Insert: {
           id?: string;
@@ -44,6 +45,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           notes?: string;
+          is_favorite?: boolean;
         };
         Update: {
           id?: string;
@@ -57,6 +59,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           notes?: string;
+          is_favorite?: boolean;
         };
       };
       portfolio_stocks: {
