@@ -228,13 +228,9 @@ export default function PortfolioTracker() {
     
     setUpdatingPrices(true);
     const uniqueSymbols = [...new Set(portfolioStocks.map(stock => stock.ticker))];
-    console.log(`Starting optimized price update for ${portfolioStocks.length} stocks (${uniqueSymbols.length} unique symbols)`);
-    
     try {
       // Use the optimized batch fetching
       const priceMap = await stockPriceService.getMultipleStockPrices(uniqueSymbols);
-      console.log(`Received ${priceMap.size} price updates`);
-      
       // Prepare batch updates for database
       const priceUpdates: { id: string; currentPrice: number }[] = [];
       
@@ -247,8 +243,6 @@ export default function PortfolioTracker() {
           });
         }
       });
-      
-      console.log('Price updates to apply:', priceUpdates);
       
       // Batch update database - process in chunks of 10
       const UPDATE_BATCH_SIZE = 10;
@@ -280,8 +274,6 @@ export default function PortfolioTracker() {
       
       // Reload portfolio to reflect changes
       await loadPortfolio();
-      
-      console.log(`Price update completed successfully`);
       
     } catch (error) {
       console.error('Failed to update current prices:', error);
