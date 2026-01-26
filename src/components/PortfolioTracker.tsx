@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, TrendingUp, TrendingDown, Wallet, Filter, CreditCard as Edit, Save, X, PieChart, Grid2x2 as Grid, List, RefreshCw } from 'lucide-react';
+import { Plus, TrendingUp, TrendingDown, Wallet, Filter, CreditCard as Edit, Save, X, PieChart, Grid2x2 as Grid, List, RefreshCw, Camera } from 'lucide-react';
 import { PortfolioStock } from '../types';
 import { supabase } from '../lib/supabase';
 import { formatCurrency, formatPercentage } from '../utils/dcf';
@@ -25,6 +25,7 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
   const [editForm, setEditForm] = useState<any>(null);
   const [updatingPrices, setUpdatingPrices] = useState(false);
   const [fetchingNewStockPrice, setFetchingNewStockPrice] = useState(false);
+  const [creatingSnapshot, setCreatingSnapshot] = useState(false);
 
   const PORTFOLIO_LIMIT = 150;
 
@@ -279,28 +280,6 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
         }
       }
 
-      if (user?.email) {
-        const snapshotTotalValue = updatedStocks.reduce((sum, stock) => sum + (stock.totalValue || 0), 0);
-        const snapshotTotalCost = updatedStocks.reduce((sum, stock) => sum + (stock.buy_price * stock.quantity), 0);
-        const snapshotTotalReturn = snapshotTotalCost > 0
-          ? (snapshotTotalValue - snapshotTotalCost) / snapshotTotalCost
-          : 0;
-
-        const { error: snapshotError } = await supabase
-          .from('portfolio_snapshots')
-          .insert([{
-            user_email: user.email,
-            snapshot_at: new Date().toISOString(),
-            total_value: snapshotTotalValue,
-            total_cost: snapshotTotalCost,
-            total_return: snapshotTotalReturn
-          }]);
-
-        if (snapshotError) {
-          console.error('Failed to save portfolio snapshot:', snapshotError);
-        }
-      }
-      
       // Reload portfolio to reflect changes
       await loadPortfolio();
       
@@ -308,6 +287,76 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
       console.error('Failed to update current prices:', error);
     } finally {
       setUpdatingPrices(false);
+    }
+  };
+
+  const createPortfolioSnapshot = async () => {
+    if (!user?.email || portfolioStocks.length === 0) return;
+
+    setCreatingSnapshot(true);
+    try {
+      const snapshotAt = new Date().toISOString();
+      const snapshotTotalValue = portfolioStocks.reduce((sum, stock) => {
+        const resolvedPrice = stock.currentPrice ?? stock.buy_price;
+        return sum + (resolvedPrice * stock.quantity);
+      }, 0);
+      const snapshotTotalCost = portfolioStocks.reduce((sum, stock) => sum + (stock.buy_price * stock.quantity), 0);
+      const snapshotTotalReturn = snapshotTotalCost > 0
+        ? (snapshotTotalValue - snapshotTotalCost) / snapshotTotalCost
+        : 0;
+
+      const { data: snapshotRows, error: snapshotError } = await supabase
+        .from('portfolio_snapshots')
+        .insert([{
+          user_email: user.email,
+          snapshot_at: snapshotAt,
+          total_value: snapshotTotalValue,
+          total_cost: snapshotTotalCost,
+          total_return: snapshotTotalReturn
+        }])
+        .select('id')
+        .limit(1);
+
+      if (snapshotError) throw snapshotError;
+
+      const snapshotId = snapshotRows?.[0]?.id;
+      if (!snapshotId) {
+        throw new Error('Snapshot insert did not return an id.');
+      }
+
+      const holdingRows = portfolioStocks.map(stock => {
+        const resolvedPrice = stock.currentPrice ?? stock.buy_price;
+        const totalValue = resolvedPrice * stock.quantity;
+        const totalCost = stock.buy_price * stock.quantity;
+        const totalReturn = totalCost > 0 ? (totalValue - totalCost) / totalCost : 0;
+        const weightPercent = snapshotTotalValue > 0 ? (totalValue / snapshotTotalValue) * 100 : 0;
+
+        return {
+          snapshot_id: snapshotId,
+          ticker: stock.ticker,
+          quantity: stock.quantity,
+          buy_price: stock.buy_price,
+          current_price: resolvedPrice,
+          total_value: totalValue,
+          total_cost: totalCost,
+          total_return: totalReturn,
+          weight_percent: weightPercent
+        };
+      });
+
+      if (holdingRows.length > 0) {
+        const { error: holdingsError } = await supabase
+          .from('portfolio_snapshot_holdings')
+          .insert(holdingRows);
+
+        if (holdingsError) {
+          throw holdingsError;
+        }
+      }
+    } catch (error) {
+      console.error('Failed to create portfolio snapshot:', error);
+    } finally {
+      setCreatingSnapshot(false);
     }
   };
 
@@ -516,6 +565,15 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
                       >
                         <RefreshCw className={`w-4 h-4 ${updatingPrices ? 'animate-spin' : ''}`} />
                         {updatingPrices ? 'Updating...' : 'Update Prices'}
+                      </button>
+
+                      <button
+                        onClick={createPortfolioSnapshot}
+                        disabled={creatingSnapshot || portfolioStocks.length === 0}
+                        className="flex items-center justify-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <Camera className={`w-4 h-4 ${creatingSnapshot ? 'animate-pulse' : ''}`} />
+                        {creatingSnapshot ? 'Saving...' : 'Create Snapshot'}
                       </button>
                     </div>
                   </div>
