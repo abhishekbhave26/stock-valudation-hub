@@ -88,6 +88,32 @@ export type Database = {
           created_at?: string;
         };
       };
+      portfolio_snapshots: {
+        Row: {
+          id: string;
+          user_email: string;
+          snapshot_at: string;
+          total_value: number;
+          total_cost: number;
+          total_return: number;
+        };
+        Insert: {
+          id?: string;
+          user_email: string;
+          snapshot_at?: string;
+          total_value: number;
+          total_cost: number;
+          total_return: number;
+        };
+        Update: {
+          id?: string;
+          user_email?: string;
+          snapshot_at?: string;
+          total_value?: number;
+          total_cost?: number;
+          total_return?: number;
+        };
+      };
     };
   };
 };

@@ -17,6 +17,7 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
   const [portfolioStocks, setPortfolioStocks] = useState<PortfolioStock[]>([]);
   const [loading, setLoading] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [portfolioView, setPortfolioView] = useState<'holdings' | 'analytics'>('holdings');
   const [sortBy, setSortBy] = useState<'ticker' | 'totalReturn' | 'cagr' | 'totalValue' | 'purchaseDate'>('totalReturn');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [filterBy, setFilterBy] = useState<'all' | 'positive' | 'negative'>('all');
@@ -25,6 +26,10 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
   const [editForm, setEditForm] = useState<any>(null);
   const [updatingPrices, setUpdatingPrices] = useState(false);
   const [fetchingNewStockPrice, setFetchingNewStockPrice] = useState(false);
+  const [snapshots, setSnapshots] = useState<
+    { id: string; snapshot_at: string; total_value: number; total_cost: number; total_return: number }[]
+  >([]);
+  const [loadingSnapshots, setLoadingSnapshots] = useState(false);
 
   const PORTFOLIO_LIMIT = 150;
 
@@ -49,6 +54,12 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
   useEffect(() => {
     loadPortfolio();
   }, [user]);
+
+  useEffect(() => {
+    if (portfolioView === 'analytics') {
+      loadSnapshots();
+    }
+  }, [portfolioView, user]);
 
   const loadPortfolio = async () => {
     if (!user?.email) {
@@ -106,6 +117,30 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
       setPortfolioStocks([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadSnapshots = async () => {
+    if (!user?.email) {
+      setSnapshots([]);
+      return;
+    }
+
+    setLoadingSnapshots(true);
+    try {
+      const { data, error } = await supabase
+        .from('portfolio_snapshots')
+        .select('*')
+        .eq('user_email', user.email)
+        .order('snapshot_at', { ascending: false });
+
+      if (error) throw error;
+      setSnapshots(data || []);
+    } catch (error) {
+      console.error('Error loading portfolio snapshots:', error);
+      setSnapshots([]);
+    } finally {
+      setLoadingSnapshots(false);
     }
   };
 
@@ -248,6 +283,17 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
         }
       });
       
+      const updatedStocks = portfolioStocks.map(stock => {
+        const priceData = priceMap.get(stock.ticker);
+        const currentPrice = priceData?.price ?? stock.currentPrice ?? stock.buy_price;
+        const totalValue = currentPrice * stock.quantity;
+        return {
+          ...stock,
+          currentPrice,
+          totalValue
+        };
+      });
+      
       // Batch update database - process in chunks of 10
       const UPDATE_BATCH_SIZE = 10;
       for (let i = 0; i < priceUpdates.length; i += UPDATE_BATCH_SIZE) {
@@ -273,6 +319,30 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
         // Small delay between database update batches
         if (i + UPDATE_BATCH_SIZE < priceUpdates.length) {
           await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+
+      if (user?.email) {
+        const snapshotTotalValue = updatedStocks.reduce((sum, stock) => sum + (stock.totalValue || 0), 0);
+        const snapshotTotalCost = updatedStocks.reduce((sum, stock) => sum + (stock.buy_price * stock.quantity), 0);
+        const snapshotTotalReturn = snapshotTotalCost > 0
+          ? (snapshotTotalValue - snapshotTotalCost) / snapshotTotalCost
+          : 0;
+
+        const { error: snapshotError } = await supabase
+          .from('portfolio_snapshots')
+          .insert([{
+            user_email: user.email,
+            snapshot_at: new Date().toISOString(),
+            total_value: snapshotTotalValue,
+            total_cost: snapshotTotalCost,
+            total_return: snapshotTotalReturn
+          }]);
+
+        if (snapshotError) {
+          console.error('Failed to save portfolio snapshot:', snapshotError);
+        } else if (portfolioView === 'analytics') {
+          await loadSnapshots();
         }
       }
       
@@ -374,257 +444,247 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
       contributionPercent
     };
   });
-  const renderPieLabel = (props: {
-    name: string;
-    percent: number;
-    x: number;
-    y: number;
-    textAnchor: string;
-    dominantBaseline: string;
-  }) => {
-    if (props.percent <= 0.02) {
-      return null;
-    }
-    return (
-      <text
-        x={props.x}
-        y={props.y}
-        textAnchor={props.textAnchor}
-        dominantBaseline={props.dominantBaseline}
-        fill={chartTextColor}
-        className="text-xs"
-      >
-        {`${props.name} ${(props.percent * 100).toFixed(1)}%`}
-      </text>
-    );
-  };
 
   return (
     <div className="space-y-6">
-      {/* Portfolio Summary */}
-      <div className="bg-white rounded-xl shadow-lg p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <Wallet className="w-6 h-6 text-blue-600" />
-          <h2 className="text-xl font-semibold text-gray-800">Portfolio Summary</h2>
+      <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-gray-800">Portfolio Tracker</h2>
+          <p className="text-sm text-gray-500">Manage holdings and review portfolio analytics.</p>
         </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="text-center p-4 bg-gray-50 rounded-lg">
-            <div className="text-2xl font-bold text-gray-800">
-              {portfolioStocks.length}
-            </div>
-            <p className="text-sm text-gray-600">Total Stocks ({portfolioStocks.length}/{PORTFOLIO_LIMIT})</p>
-          </div>
-          <div className="text-center p-4 bg-blue-50 rounded-lg">
-            <div className="text-2xl font-bold text-blue-600">
-              {formatCurrency(totalPortfolioValue)}
-            </div>
-            <p className="text-sm text-gray-600">Total Value</p>
-          </div>
-          <div className="text-center p-4 bg-gray-50 rounded-lg">
-            <div className="text-2xl font-bold text-gray-800">
-              {formatCurrency(totalCost)}
-            </div>
-            <p className="text-sm text-gray-600">Total Cost</p>
-          </div>
-          <div className="text-center p-4 bg-green-50 rounded-lg">
-            <div className={`text-2xl font-bold ${totalReturn >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {formatPercentage(totalReturn)}
-            </div>
-            <p className="text-sm text-gray-600">Total Return</p>
-          </div>
-        </div>
-        
-        <div className="mt-4">
-          <div className="text-center p-4 bg-purple-50 rounded-lg">
-            <div className={`text-2xl font-bold ${portfolioCAGR >= 0 ? 'text-purple-600' : 'text-red-600'}`}>
-              {formatPercentage(portfolioCAGR)}
-            </div>
-            <p className="text-sm text-gray-600">Portfolio CAGR</p>
-            <p className="text-xs text-gray-500 mt-1">Weighted by investment amount</p>
-          </div>
-        </div>
+        <select
+          value={portfolioView}
+          onChange={(e) => setPortfolioView(e.target.value as typeof portfolioView)}
+          className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="holdings">Portfolio Holdings</option>
+          <option value="analytics">Portfolio Analytics</option>
+        </select>
       </div>
 
-      {/* Visualizations */}
-      {portfolioStocks.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Portfolio Allocation Pie Chart */}
+      {portfolioView === 'holdings' ? (
+        <>
+          {/* Portfolio Summary */}
           <div className="bg-white rounded-xl shadow-lg p-6">
             <div className="flex items-center gap-3 mb-4">
-              <PieChart className="w-5 h-5 text-blue-600" />
-              <h3 className="text-lg font-semibold text-gray-800">Portfolio Allocation</h3>
+              <Wallet className="w-6 h-6 text-blue-600" />
+              <h2 className="text-xl font-semibold text-gray-800">Portfolio Summary</h2>
             </div>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <RechartsPieChart>
-                  <Pie
-                    data={pieChartData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={renderPieLabel}
-                    outerRadius={80}
-                    fill={COLORS[0]}
-                    dataKey="value"
-                  >
-                    {pieChartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={tooltipStyles}
-                    formatter={(value, name) => [formatCurrency(value as number), name]}
-                    labelFormatter={() => ''}
-                  />
-                  <Legend wrapperStyle={{ color: chartTextColor }} />
-                </RechartsPieChart>
-              </ResponsiveContainer>
+        
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="text-center p-4 bg-gray-50 rounded-lg">
+                <div className="text-2xl font-bold text-gray-800">
+                  {portfolioStocks.length}
+                </div>
+                <p className="text-sm text-gray-600">Total Stocks ({portfolioStocks.length}/{PORTFOLIO_LIMIT})</p>
+              </div>
+              <div className="text-center p-4 bg-blue-50 rounded-lg">
+                <div className="text-2xl font-bold text-blue-600">
+                  {formatCurrency(totalPortfolioValue)}
+                </div>
+                <p className="text-sm text-gray-600">Total Value</p>
+              </div>
+              <div className="text-center p-4 bg-gray-50 rounded-lg">
+                <div className="text-2xl font-bold text-gray-800">
+                  {formatCurrency(totalCost)}
+                </div>
+                <p className="text-sm text-gray-600">Total Cost</p>
+              </div>
+              <div className="text-center p-4 bg-green-50 rounded-lg">
+                <div className={`text-2xl font-bold ${totalReturn >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {formatPercentage(totalReturn)}
+                </div>
+                <p className="text-sm text-gray-600">Total Return</p>
+              </div>
+            </div>
+        
+            <div className="mt-4">
+              <div className="text-center p-4 bg-purple-50 rounded-lg">
+                <div className={`text-2xl font-bold ${portfolioCAGR >= 0 ? 'text-purple-600' : 'text-red-600'}`}>
+                  {formatPercentage(portfolioCAGR)}
+                </div>
+                <p className="text-sm text-gray-600">Portfolio CAGR</p>
+                <p className="text-xs text-gray-500 mt-1">Weighted by investment amount</p>
+              </div>
             </div>
           </div>
 
-          {/* Performance Bar Chart */}
-          <div className="bg-white rounded-xl shadow-lg p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <TrendingUp className="w-5 h-5 text-green-600" />
-              <h3 className="text-lg font-semibold text-gray-800">Return Contribution</h3>
-            </div>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={barChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
-                  <XAxis dataKey="ticker" tick={{ fill: chartTextColor }} axisLine={{ stroke: chartGridColor }} />
-                  <YAxis tick={{ fill: chartTextColor }} axisLine={{ stroke: chartGridColor }} />
-                  <Tooltip
-                    contentStyle={tooltipStyles}
-                    formatter={(value, name, item) => {
-                      if (name === 'contributionPercent') {
-                        const profitValue = (item?.payload?.profitValue ?? 0) as number;
-                        return [
-                          `${(value as number).toFixed(2)}% (${formatCurrency(profitValue)})`,
-                          'Contribution'
-                        ];
-                      }
-                      return value;
-                    }}
-                  />
-                  <Legend wrapperStyle={{ color: chartTextColor }} />
-                  <Bar dataKey="contributionPercent" fill={COLORS[4]} name="Value-Weighted Return %" />
-                </BarChart>
-              </ResponsiveContainer>
-              <p className="text-xs text-gray-500 mt-2">Based on each holding’s profit relative to total invested cost.</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Portfolio Stocks */}
-      {loading ? (
-        <div className="text-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="text-gray-500 mt-2">Loading portfolio...</p>
-        </div>
-      ) : filteredAndSortedStocks.length === 0 ? (
-        <div className="text-center py-8 bg-white rounded-xl shadow-lg">
-          <Wallet className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-          <p className="text-gray-500">No stocks in your portfolio yet.</p>
-          <button
-            onClick={() => setShowAddForm(true)}
-            className="mt-3 text-blue-600 hover:text-blue-700"
-          >
-            Add your first stock
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {/* Controls */}
-          <div className="bg-white rounded-xl shadow-lg p-6">
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <h2 className="text-xl font-semibold text-gray-800">Portfolio Holdings</h2>
-                
-                {/* Action Buttons */}
-                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-                  <button
-                    onClick={() => setShowAddForm(true)}
-                    disabled={portfolioStocks.length >= PORTFOLIO_LIMIT}
-                    className="flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add Stock
-                  </button>
-                  
-                  <button
-                    onClick={updateAllCurrentPrices}
-                    disabled={updatingPrices || portfolioStocks.length === 0}
-                    className="flex items-center justify-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <RefreshCw className={`w-4 h-4 ${updatingPrices ? 'animate-spin' : ''}`} />
-                    {updatingPrices ? 'Updating...' : 'Update Prices'}
-                  </button>
+          {/* Visualizations */}
+          {portfolioStocks.length > 0 && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Portfolio Allocation Pie Chart */}
+              <div className="bg-white rounded-xl shadow-lg p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <PieChart className="w-5 h-5 text-blue-600" />
+                  <h3 className="text-lg font-semibold text-gray-800">Portfolio Allocation</h3>
+                </div>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RechartsPieChart>
+                      <Pie
+                        data={pieChartData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, percent }) => percent > 0.02 ? `${name} ${(percent * 100).toFixed(1)}%` : ''}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {pieChartData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        formatter={(value, name) => [formatCurrency(value as number), name]}
+                        labelFormatter={() => ''}
+                      />
+                    </RechartsPieChart>
+                  </ResponsiveContainer>
                 </div>
               </div>
-              
-              {/* Sort, Filter and View Controls */}
-              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-                <div className="grid grid-cols-2 sm:flex gap-2 sm:gap-3">
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 min-w-0"
-                  >
-                    <option value="ticker">Sort: Ticker</option>
-                    <option value="totalReturn">Sort: Return</option>
-                    <option value="cagr">Sort: CAGR</option>
-                    <option value="totalValue">Sort: Value</option>
-                    <option value="purchaseDate">Sort: Date</option>
-                  </select>
-                  
-                  <select
-                    value={sortDirection}
-                    onChange={(e) => setSortDirection(e.target.value as 'asc' | 'desc')}
-                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 min-w-0"
-                  >
-                    <option value="desc">↓ Desc</option>
-                    <option value="asc">↑ Asc</option>
-                  </select>
+
+              {/* Performance Bar Chart */}
+              <div className="bg-white rounded-xl shadow-lg p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <TrendingUp className="w-5 h-5 text-green-600" />
+                  <h3 className="text-lg font-semibold text-gray-800">Return Contribution</h3>
                 </div>
-                
-                <div className="grid grid-cols-2 sm:flex gap-2 sm:gap-3">
-                  <select
-                    value={filterBy}
-                    onChange={(e) => setFilterBy(e.target.value as typeof filterBy)}
-                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 min-w-0"
-                  >
-                    <option value="all">All Stocks</option>
-                    <option value="positive">Positive</option>
-                    <option value="negative">Negative</option>
-                  </select>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={barChartData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="ticker" />
+                      <YAxis />
+                      <Tooltip
+                        formatter={(value, name, item) => {
+                          if (name === 'contributionPercent') {
+                            const profitValue = (item?.payload?.profitValue ?? 0) as number;
+                            return [
+                              `${(value as number).toFixed(2)}% (${formatCurrency(profitValue)})`,
+                              'Contribution'
+                            ];
+                          }
+                          return value;
+                        }}
+                      />
+                      <Legend />
+                      <Bar dataKey="contributionPercent" fill="#8884d8" name="Value-Weighted Return %" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                  <p className="text-xs text-gray-500 mt-2">Based on each holding’s profit relative to total invested cost.</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Portfolio Stocks */}
+          {loading ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+              <p className="text-gray-500 mt-2">Loading portfolio...</p>
+            </div>
+          ) : filteredAndSortedStocks.length === 0 ? (
+            <div className="text-center py-8 bg-white rounded-xl shadow-lg">
+              <Wallet className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+              <p className="text-gray-500">No stocks in your portfolio yet.</p>
+              <button
+                onClick={() => setShowAddForm(true)}
+                className="mt-3 text-blue-600 hover:text-blue-700"
+              >
+                Add your first stock
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Controls */}
+              <div className="bg-white rounded-xl shadow-lg p-6">
+                <div className="flex flex-col gap-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <h2 className="text-xl font-semibold text-gray-800">Portfolio Holdings</h2>
+                    
+                    {/* Action Buttons */}
+                    <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                      <button
+                        onClick={() => setShowAddForm(true)}
+                        disabled={portfolioStocks.length >= PORTFOLIO_LIMIT}
+                        className="flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Add Stock
+                      </button>
+                      
+                      <button
+                        onClick={updateAllCurrentPrices}
+                        disabled={updatingPrices || portfolioStocks.length === 0}
+                        className="flex items-center justify-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <RefreshCw className={`w-4 h-4 ${updatingPrices ? 'animate-spin' : ''}`} />
+                        {updatingPrices ? 'Updating...' : 'Update Prices'}
+                      </button>
+                    </div>
+                  </div>
                   
-                  <div className="flex bg-gray-100 rounded-lg p-1">
-                    <button
-                      onClick={() => setViewMode('list')}
-                      className={`flex items-center gap-1 px-3 py-1 rounded text-sm transition-colors ${
-                        viewMode === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600'
-                      }`}
-                    >
-                      <List className="w-4 h-4" />
-                      <span className="hidden sm:inline">List</span>
-                    </button>
-                    <button
-                      onClick={() => setViewMode('tile')}
-                      className={`flex items-center gap-1 px-3 py-1 rounded text-sm transition-colors ${
-                        viewMode === 'tile' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600'
-                      }`}
-                    >
-                      <Grid className="w-4 h-4" />
-                      <span className="hidden sm:inline">Tile</span>
-                    </button>
+                  {/* Sort, Filter and View Controls */}
+                  <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                    <div className="grid grid-cols-2 sm:flex gap-2 sm:gap-3">
+                      <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 min-w-0"
+                      >
+                        <option value="ticker">Sort: Ticker</option>
+                        <option value="totalReturn">Sort: Return</option>
+                        <option value="cagr">Sort: CAGR</option>
+                        <option value="totalValue">Sort: Value</option>
+                        <option value="purchaseDate">Sort: Date</option>
+                      </select>
+                      
+                      <select
+                        value={sortDirection}
+                        onChange={(e) => setSortDirection(e.target.value as 'asc' | 'desc')}
+                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 min-w-0"
+                      >
+                        <option value="desc">↓ Desc</option>
+                        <option value="asc">↑ Asc</option>
+                      </select>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 sm:flex gap-2 sm:gap-3">
+                      <select
+                        value={filterBy}
+                        onChange={(e) => setFilterBy(e.target.value as typeof filterBy)}
+                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 min-w-0"
+                      >
+                        <option value="all">All Stocks</option>
+                        <option value="positive">Positive</option>
+                        <option value="negative">Negative</option>
+                      </select>
+                      
+                      <div className="flex bg-gray-100 rounded-lg p-1">
+                        <button
+                          onClick={() => setViewMode('list')}
+                          className={`flex items-center gap-1 px-3 py-1 rounded text-sm transition-colors ${
+                            viewMode === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600'
+                          }`}
+                        >
+                          <List className="w-4 h-4" />
+                          <span className="hidden sm:inline">List</span>
+                        </button>
+                        <button
+                          onClick={() => setViewMode('tile')}
+                          className={`flex items-center gap-1 px-3 py-1 rounded text-sm transition-colors ${
+                            viewMode === 'tile' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600'
+                          }`}
+                        >
+                          <Grid className="w-4 h-4" />
+                          <span className="hidden sm:inline">Tile</span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          </div>
 
           {viewMode === 'tile' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -1015,6 +1075,54 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
               </button>
             </div>
           </div>
+        </div>
+      )}
+        </>
+      ) : (
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <Wallet className="w-5 h-5 text-blue-600" />
+            <h3 className="text-lg font-semibold text-gray-800">Portfolio Snapshots</h3>
+          </div>
+          {loadingSnapshots ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+              <p className="text-gray-500 mt-2">Loading snapshots...</p>
+            </div>
+          ) : snapshots.length === 0 ? (
+            <p className="text-sm text-gray-500">No snapshots yet. Update prices to create your first snapshot.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-left">
+                  <tr>
+                    <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Snapshot Date</th>
+                    <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Total Value</th>
+                    <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Total Cost</th>
+                    <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Total Return</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {snapshots.map(snapshot => (
+                    <tr key={snapshot.id}>
+                      <td className="px-4 py-2 text-gray-900">
+                        {format(new Date(snapshot.snapshot_at), 'MMM dd, yyyy HH:mm')}
+                      </td>
+                      <td className="px-4 py-2 text-gray-900">
+                        {formatCurrency(snapshot.total_value)}
+                      </td>
+                      <td className="px-4 py-2 text-gray-700">
+                        {formatCurrency(snapshot.total_cost)}
+                      </td>
+                      <td className={`px-4 py-2 font-medium ${snapshot.total_return >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {formatPercentage(snapshot.total_return)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </div>
