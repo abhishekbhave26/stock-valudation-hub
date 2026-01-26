@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, Trash2, BarChart3, CreditCard as Edit, RefreshCw, AlertTriangle, Search } from 'lucide-react';
+import { TrendingUp, TrendingDown, Trash2, BarChart3, CreditCard as Edit, RefreshCw, AlertTriangle, Search, Star } from 'lucide-react';
 import { SavedStock } from '../types';
 import { supabase } from '../lib/supabase';
 import { formatCurrency, formatPercentage, getPerformanceColor, calculateDCF } from '../utils/dcf';
@@ -12,10 +12,10 @@ export default function StockWatchlist() {
   const { user } = useAuth();
   const [stocks, setStocks] = useState<SavedStock[]>([]);
   const [loading, setLoading] = useState(false);
-  const [sortBy, setSortBy] = useState<'ticker' | 'expectedReturn' | 'cagr' | 'buyTarget' | 'status' | 'lastUpdated'>('cagr');
+  const [sortBy, setSortBy] = useState<'ticker' | 'expectedReturn' | 'cagr' | 'buyTarget' | 'status' | 'lastUpdated' | 'valuation'>('cagr');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [filterBy, setFilterBy] = useState<
-    'all' | 'undervalued' | 'overvalued' | 'cagr10' | 'cagr15' | 'cagr20'
+    'all' | 'favorites' | 'undervalued' | 'overvalued' | 'cagr10' | 'cagr15' | 'cagr20'
   >('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [editingStock, setEditingStock] = useState<SavedStock | null>(null);
@@ -73,7 +73,8 @@ export default function StockWatchlist() {
             fairValue: stock.fair_value,
             expectedReturn: totalReturn,
             cagr: cagr,
-            buyTarget: stock.buy_target
+            buyTarget: stock.buy_target,
+            isFavorite: stock.is_favorite ?? false
           };
         });
         setStocks(enrichedStocks);
@@ -117,6 +118,24 @@ export default function StockWatchlist() {
       loadStocks();
     } catch (error) {
       console.error('Error deleting stock:', error);
+    }
+  };
+
+  const toggleFavorite = async (stock: SavedStock) => {
+    try {
+      const nextValue = !stock.isFavorite;
+      const { error } = await supabase
+        .from('saved_stocks')
+        .update({ is_favorite: nextValue, updated_at: new Date().toISOString() })
+        .eq('id', stock.id);
+
+      if (error) throw error;
+
+      setStocks(prev =>
+        prev.map(item => (item.id === stock.id ? { ...item, isFavorite: nextValue } : item))
+      );
+    } catch (error) {
+      console.error('Error updating favorite status:', error);
     }
   };
 
@@ -299,6 +318,17 @@ export default function StockWatchlist() {
     return { status: 'overvalued', color: 'bg-red-600', text: 'Overvalued' };
   };
 
+  const getCurrentValuation = (stock: SavedStock) => {
+    const metric = stock.dcf_inputs?.valuationMetric;
+    const baseMetric = stock.dcf_inputs?.baseMetricPerShare;
+    if (!metric || !baseMetric || baseMetric === 0) return null;
+    const currentValuation = stock.currentPrice / baseMetric;
+    return {
+      value: currentValuation,
+      metric
+    };
+  };
+
   const isStockStale = (stock: SavedStock) => {
     const updatedAt = new Date(stock.updatedAt);
     const daysSinceUpdate = differenceInDays(new Date(), updatedAt);
@@ -341,6 +371,7 @@ export default function StockWatchlist() {
       }
       
       // Valuation filter
+      if (filterBy === 'favorites') return Boolean(stock.isFavorite);
       if (filterBy === 'undervalued') return stock.currentPrice < stock.fairValue;
       if (filterBy === 'overvalued') return stock.currentPrice > stock.fairValue;
       if (filterBy === 'cagr10') return stock.cagr >= 0.1;
@@ -368,6 +399,9 @@ export default function StockWatchlist() {
           break;
         case 'lastUpdated':
           comparison = new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+          break;
+        case 'valuation':
+          comparison = (getCurrentValuation(b)?.value ?? 0) - (getCurrentValuation(a)?.value ?? 0);
           break;
         default:
           comparison = a.ticker.localeCompare(b.ticker);
@@ -681,6 +715,7 @@ export default function StockWatchlist() {
                   <option value="buyTarget">Sort: Buy Target</option>
                   <option value="status">Sort: Status</option>
                   <option value="lastUpdated">Sort: Updated</option>
+                  <option value="valuation">Sort: Valuation</option>
                 </select>
                 
                 <select
@@ -699,6 +734,7 @@ export default function StockWatchlist() {
                 className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 min-w-0"
               >
                 <option value="all">All Stocks</option>
+                <option value="favorites">Favorites</option>
                 <option value="undervalued">Undervalued</option>
                 <option value="overvalued">Overvalued</option>
                 <option value="cagr10">CAGR ~ 10%</option>
@@ -719,6 +755,7 @@ export default function StockWatchlist() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Price</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Target Prices</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">CAGR</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Valuation</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Buy Target</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Updated</th>
@@ -729,10 +766,22 @@ export default function StockWatchlist() {
               {filteredAndSortedStocks.map((stock) => {
                 const valuation = getValuationStatus(stock);
                 const isStale = isStockStale(stock);
+                const currentValuation = getCurrentValuation(stock);
                 return (
                   <tr key={stock.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleFavorite(stock)}
+                          className={`rounded-full p-1 transition-colors ${
+                            stock.isFavorite ? 'text-yellow-500' : 'text-gray-300 hover:text-yellow-400'
+                          }`}
+                          title={stock.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                          aria-label={stock.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                        >
+                          <Star className={`w-4 h-4 ${stock.isFavorite ? 'fill-current' : ''}`} />
+                        </button>
                         <div className="font-medium text-gray-900">{stock.ticker}</div>
                         {isStale && (
                           <AlertTriangle 
@@ -762,6 +811,15 @@ export default function StockWatchlist() {
                       <div className={`text-sm font-medium ${getPerformanceColor(stock.cagr, 'cagr')}`}>
                         {formatPercentage(stock.cagr)}
                       </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {currentValuation ? (
+                        <div className="text-sm font-medium text-gray-900">
+                          {currentValuation.value.toFixed(2)} {currentValuation.metric}
+                        </div>
+                      ) : (
+                        <div className="text-sm text-gray-400">—</div>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-blue-600">

@@ -31,6 +31,7 @@ export type Database = {
           created_at: string;
           updated_at: string;
           notes: string;
+          is_favorite: boolean;
         };
         Insert: {
           id?: string;
@@ -44,6 +45,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           notes?: string;
+          is_favorite?: boolean;
         };
         Update: {
           id?: string;
@@ -57,6 +59,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           notes?: string;
+          is_favorite?: boolean;
         };
       };
       portfolio_stocks: {
@@ -83,6 +86,32 @@ export type Database = {
           buy_price?: number;
           purchase_date?: string;
           created_at?: string;
+        };
+      };
+      portfolio_snapshots: {
+        Row: {
+          id: string;
+          user_email: string;
+          snapshot_at: string;
+          total_value: number;
+          total_cost: number;
+          total_return: number;
+        };
+        Insert: {
+          id?: string;
+          user_email: string;
+          snapshot_at?: string;
+          total_value: number;
+          total_cost: number;
+          total_return: number;
+        };
+        Update: {
+          id?: string;
+          user_email?: string;
+          snapshot_at?: string;
+          total_value?: number;
+          total_cost?: number;
+          total_return?: number;
         };
       };
     };

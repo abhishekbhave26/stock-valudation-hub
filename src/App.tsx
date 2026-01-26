@@ -120,7 +120,8 @@ function App() {
           buy_target: stockData.buyTarget,
           dcf_inputs: stockData.dcfInputs,
           notes: stockData.notes,
-          user_email: user?.email
+          user_email: user?.email,
+          is_favorite: false
         }]);
 
       if (error) throw error;
