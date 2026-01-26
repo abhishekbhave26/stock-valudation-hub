@@ -8,7 +8,11 @@ import { PieChart as RechartsPieChart, Cell, ResponsiveContainer, BarChart, Bar,
 import { stockPriceService } from '../services/stockPriceService';
 import { useAuth } from '../hooks/useAuth';
 
-export default function PortfolioTracker() {
+type PortfolioTrackerProps = {
+  isDarkMode?: boolean;
+};
+
+export default function PortfolioTracker({ isDarkMode = false }: PortfolioTrackerProps) {
   const { user } = useAuth();
   const [portfolioStocks, setPortfolioStocks] = useState<PortfolioStock[]>([]);
   const [loading, setLoading] = useState(false);
@@ -341,10 +345,16 @@ export default function PortfolioTracker() {
   })();
 
   // Define colors array before using it
-  const COLORS = [
-    '#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', 
-    '#82CA9D', '#FFC658', '#FF7C7C', '#8DD1E1', '#D084D0'
-  ];
+  const COLORS = isDarkMode
+    ? ['#60A5FA', '#34D399', '#FBBF24', '#F97316', '#C4B5FD', '#67E8F9', '#A3E635', '#FCA5A5', '#7DD3FC', '#F9A8D4']
+    : ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFC658', '#FF7C7C', '#8DD1E1', '#D084D0'];
+  const chartGridColor = isDarkMode ? '#334155' : '#e5e7eb';
+  const chartTextColor = isDarkMode ? '#cbd5f5' : '#64748b';
+  const tooltipStyles = {
+    backgroundColor: isDarkMode ? '#0f172a' : '#ffffff',
+    borderColor: isDarkMode ? '#334155' : '#e5e7eb',
+    color: isDarkMode ? '#e2e8f0' : '#111827'
+  };
 
   // Prepare data for visualizations
   const pieChartData = portfolioStocks.map((stock, index) => ({
@@ -364,6 +374,30 @@ export default function PortfolioTracker() {
       contributionPercent
     };
   });
+  const renderPieLabel = (props: {
+    name: string;
+    percent: number;
+    x: number;
+    y: number;
+    textAnchor: string;
+    dominantBaseline: string;
+  }) => {
+    if (props.percent <= 0.02) {
+      return null;
+    }
+    return (
+      <text
+        x={props.x}
+        y={props.y}
+        textAnchor={props.textAnchor}
+        dominantBaseline={props.dominantBaseline}
+        fill={chartTextColor}
+        className="text-xs"
+      >
+        {`${props.name} ${(props.percent * 100).toFixed(1)}%`}
+      </text>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -429,19 +463,21 @@ export default function PortfolioTracker() {
                     cx="50%"
                     cy="50%"
                     labelLine={false}
-                    label={({ name, percent }) => percent > 0.02 ? `${name} ${(percent * 100).toFixed(1)}%` : ''}
+                    label={renderPieLabel}
                     outerRadius={80}
-                    fill="#8884d8"
+                    fill={COLORS[0]}
                     dataKey="value"
                   >
                     {pieChartData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip 
+                  <Tooltip
+                    contentStyle={tooltipStyles}
                     formatter={(value, name) => [formatCurrency(value as number), name]}
                     labelFormatter={() => ''}
                   />
+                  <Legend wrapperStyle={{ color: chartTextColor }} />
                 </RechartsPieChart>
               </ResponsiveContainer>
             </div>
@@ -456,10 +492,11 @@ export default function PortfolioTracker() {
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={barChartData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="ticker" />
-                  <YAxis />
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
+                  <XAxis dataKey="ticker" tick={{ fill: chartTextColor }} axisLine={{ stroke: chartGridColor }} />
+                  <YAxis tick={{ fill: chartTextColor }} axisLine={{ stroke: chartGridColor }} />
                   <Tooltip
+                    contentStyle={tooltipStyles}
                     formatter={(value, name, item) => {
                       if (name === 'contributionPercent') {
                         const profitValue = (item?.payload?.profitValue ?? 0) as number;
@@ -471,8 +508,8 @@ export default function PortfolioTracker() {
                       return value;
                     }}
                   />
-                  <Legend />
-                  <Bar dataKey="contributionPercent" fill="#8884d8" name="Value-Weighted Return %" />
+                  <Legend wrapperStyle={{ color: chartTextColor }} />
+                  <Bar dataKey="contributionPercent" fill={COLORS[4]} name="Value-Weighted Return %" />
                 </BarChart>
               </ResponsiveContainer>
               <p className="text-xs text-gray-500 mt-2">Based on each holding’s profit relative to total invested cost.</p>
