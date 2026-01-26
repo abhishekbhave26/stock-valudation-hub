@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Calculator, Wallet, BarChart3, Eye, LogOut, User, Lock, MessageSquare } from 'lucide-react';
 import DCFCalculator from './components/DCFCalculator';
 import PortfolioTracker from './components/PortfolioTracker';
@@ -15,6 +15,50 @@ function App() {
   const [activeTab, setActiveTab] = useState<'watchlist' | 'dcf' | 'portfolio' | 'about' | 'contact'>('watchlist');
   const [authFormLoading, setAuthFormLoading] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
+  useEffect(() => {
+    const savedPreference = localStorage.getItem('theme');
+    if (savedPreference === 'dark') {
+      setIsDarkMode(true);
+      document.documentElement.classList.add('dark');
+      return;
+    }
+    if (savedPreference === 'light') {
+      document.documentElement.classList.remove('dark');
+      return;
+    }
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    setIsDarkMode(prefersDark);
+    document.documentElement.classList.toggle('dark', prefersDark);
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', isDarkMode);
+    localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
+  }, [isDarkMode]);
+
+  const themeToggleBar = (
+    <div className="border-b border-gray-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 backdrop-blur">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 flex items-center justify-between text-xs sm:text-sm">
+        <span className="text-gray-500 dark:text-slate-400">Theme</span>
+        <button
+          type="button"
+          onClick={() => setIsDarkMode((prev) => !prev)}
+          className="relative inline-flex h-6 w-11 items-center rounded-full bg-gray-200 dark:bg-slate-700 transition-colors"
+          role="switch"
+          aria-checked={isDarkMode}
+        >
+          <span className="sr-only">Toggle dark mode</span>
+          <span
+            className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+              isDarkMode ? 'translate-x-6' : 'translate-x-1'
+            }`}
+          />
+        </button>
+      </div>
+    </div>
+  );
 
   const handleLogin = async (email: string, password: string) => {
     setAuthFormLoading(true);
@@ -163,14 +207,16 @@ function App() {
         onCancel={() => setShowChangePassword(false)}
         loading={authLoading}
         error={authError}
+        headerSlot={themeToggleBar}
       />
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-900">
+      {themeToggleBar}
       {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
+      <header className="bg-white shadow-sm border-b border-gray-200 dark:bg-slate-900 dark:border-slate-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
@@ -178,25 +224,25 @@ function App() {
                 <BarChart3 className="w-6 h-6 text-white" />
               </div>
               <div className="min-w-0">
-                <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">StockValuation Pro</h1>
-                <p className="text-xs sm:text-sm text-gray-500 hidden sm:block">DCF Analysis & Portfolio Tracking</p>
+                <h1 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white truncate">StockValuation Pro</h1>
+                <p className="text-xs sm:text-sm text-gray-500 dark:text-slate-400 hidden sm:block">DCF Analysis & Portfolio Tracking</p>
               </div>
             </div>
             <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
-              <div className="hidden md:flex items-center gap-2 text-sm text-gray-600">
+              <div className="hidden md:flex items-center gap-2 text-sm text-gray-600 dark:text-slate-300">
                 <User className="w-4 h-4" />
                 <span className="truncate max-w-32">{user.user_metadata?.username || user.email}</span>
               </div>
               <button
                 onClick={() => setShowChangePassword(true)}
-                className="hidden sm:flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                className="hidden sm:flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-800 rounded-lg transition-colors"
               >
                 <Lock className="w-4 h-4" />
                 <span className="hidden lg:inline">Change Password</span>
               </button>
               <button
                 onClick={handleLogout}
-                className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-800 rounded-lg transition-colors"
               >
                 <LogOut className="w-4 h-4" />
                 <span className="hidden sm:inline">Logout</span>
@@ -207,7 +253,7 @@ function App() {
       </header>
 
       {/* Navigation Tabs */}
-      <nav className="bg-white border-b border-gray-200">
+      <nav className="bg-white border-b border-gray-200 dark:bg-slate-900 dark:border-slate-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex space-x-2 sm:space-x-4 lg:space-x-8 overflow-x-auto scrollbar-hide">
             {tabs.map((tab) => {
@@ -218,8 +264,8 @@ function App() {
                   onClick={() => setActiveTab(tab.id as typeof activeTab)}
                   className={`flex items-center gap-1 sm:gap-2 py-4 px-2 sm:px-3 lg:px-4 border-b-2 font-medium text-xs sm:text-sm transition-colors whitespace-nowrap ${
                     activeTab === tab.id
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:border-slate-600'
                   }`}
                 >
                   <Icon className="w-4 h-4" />
@@ -241,15 +287,15 @@ function App() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'watchlist' && <StockWatchlist />}
         {activeTab === 'dcf' && <DCFCalculator onSaveStock={handleSaveStock} />}
-        {activeTab === 'portfolio' && <PortfolioTracker />}
+        {activeTab === 'portfolio' && <PortfolioTracker isDarkMode={isDarkMode} />}
         {activeTab === 'about' && <AboutUs />}
         {activeTab === 'contact' && <ContactUs />}
       </main>
 
       {/* Footer */}
-      <footer className="bg-white border-t border-gray-200 mt-16">
+      <footer className="bg-white border-t border-gray-200 mt-16 dark:bg-slate-900 dark:border-slate-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="text-center text-sm text-gray-500">
+          <div className="text-center text-sm text-gray-500 dark:text-slate-400">
             <p>Professional DCF valuation calculator with portfolio tracking</p>
             <p className="mt-1">Built with React, TypeScript, Tailwind CSS, and Supabase</p>
           </div>

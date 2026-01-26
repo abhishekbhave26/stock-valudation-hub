@@ -8,7 +8,11 @@ import { PieChart as RechartsPieChart, Cell, ResponsiveContainer, BarChart, Bar,
 import { stockPriceService } from '../services/stockPriceService';
 import { useAuth } from '../hooks/useAuth';
 
-export default function PortfolioTracker() {
+type PortfolioTrackerProps = {
+  isDarkMode?: boolean;
+};
+
+export default function PortfolioTracker({ isDarkMode = false }: PortfolioTrackerProps) {
   const { user } = useAuth();
   const [portfolioStocks, setPortfolioStocks] = useState<PortfolioStock[]>([]);
   const [loading, setLoading] = useState(false);
@@ -263,13 +267,9 @@ export default function PortfolioTracker() {
     
     setUpdatingPrices(true);
     const uniqueSymbols = [...new Set(portfolioStocks.map(stock => stock.ticker))];
-    console.log(`Starting optimized price update for ${portfolioStocks.length} stocks (${uniqueSymbols.length} unique symbols)`);
-    
     try {
       // Use the optimized batch fetching
       const priceMap = await stockPriceService.getMultipleStockPrices(uniqueSymbols);
-      console.log(`Received ${priceMap.size} price updates`);
-      
       // Prepare batch updates for database
       const priceUpdates: { id: string; currentPrice: number }[] = [];
       
@@ -283,8 +283,6 @@ export default function PortfolioTracker() {
         }
       });
       
-      console.log('Price updates to apply:', priceUpdates);
-
       const updatedStocks = portfolioStocks.map(stock => {
         const priceData = priceMap.get(stock.ticker);
         const currentPrice = priceData?.price ?? stock.currentPrice ?? stock.buy_price;
@@ -350,8 +348,6 @@ export default function PortfolioTracker() {
       
       // Reload portfolio to reflect changes
       await loadPortfolio();
-      
-      console.log(`Price update completed successfully`);
       
     } catch (error) {
       console.error('Failed to update current prices:', error);
@@ -419,10 +415,16 @@ export default function PortfolioTracker() {
   })();
 
   // Define colors array before using it
-  const COLORS = [
-    '#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', 
-    '#82CA9D', '#FFC658', '#FF7C7C', '#8DD1E1', '#D084D0'
-  ];
+  const COLORS = isDarkMode
+    ? ['#60A5FA', '#34D399', '#FBBF24', '#F97316', '#C4B5FD', '#67E8F9', '#A3E635', '#FCA5A5', '#7DD3FC', '#F9A8D4']
+    : ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFC658', '#FF7C7C', '#8DD1E1', '#D084D0'];
+  const chartGridColor = isDarkMode ? '#334155' : '#e5e7eb';
+  const chartTextColor = isDarkMode ? '#cbd5f5' : '#64748b';
+  const tooltipStyles = {
+    backgroundColor: isDarkMode ? '#0f172a' : '#ffffff',
+    borderColor: isDarkMode ? '#334155' : '#e5e7eb',
+    color: isDarkMode ? '#e2e8f0' : '#111827'
+  };
 
   // Prepare data for visualizations
   const pieChartData = portfolioStocks.map((stock, index) => ({
