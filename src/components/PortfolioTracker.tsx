@@ -361,10 +361,17 @@ export default function PortfolioTracker() {
     color: COLORS[index % COLORS.length]
   }));
 
-  const barChartData = portfolioStocks.map(stock => ({
-    ticker: stock.ticker,
-    totalReturn: (stock.totalReturn || 0) * 100
-  }));
+  const barChartData = portfolioStocks.map(stock => {
+    const profitValue = (stock.totalValue || 0) - (stock.buy_price * stock.quantity);
+    const rawContribution = totalCost > 0 ? (profitValue / totalCost) * 100 : 0;
+    const contributionPercent = Math.round(rawContribution * 100) / 100;
+
+    return {
+      ticker: stock.ticker,
+      profitValue,
+      contributionPercent
+    };
+  });
 
   return (
     <div className="space-y-6">
@@ -452,7 +459,7 @@ export default function PortfolioTracker() {
           <div className="bg-white rounded-xl shadow-lg p-6">
             <div className="flex items-center gap-3 mb-4">
               <TrendingUp className="w-5 h-5 text-green-600" />
-              <h3 className="text-lg font-semibold text-gray-800">Performance Comparison</h3>
+              <h3 className="text-lg font-semibold text-gray-800">Return Contribution</h3>
             </div>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
@@ -460,11 +467,23 @@ export default function PortfolioTracker() {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="ticker" />
                   <YAxis />
-                  <Tooltip formatter={(value) => `${(value as number).toFixed(2)}%`} />
+                  <Tooltip
+                    formatter={(value, name, item) => {
+                      if (name === 'contributionPercent') {
+                        const profitValue = (item?.payload?.profitValue ?? 0) as number;
+                        return [
+                          `${(value as number).toFixed(2)}% (${formatCurrency(profitValue)})`,
+                          'Contribution'
+                        ];
+                      }
+                      return value;
+                    }}
+                  />
                   <Legend />
-                  <Bar dataKey="totalReturn" fill="#8884d8" name="Total Return %" />
+                  <Bar dataKey="contributionPercent" fill="#8884d8" name="Value-Weighted Return %" />
                 </BarChart>
               </ResponsiveContainer>
+              <p className="text-xs text-gray-500 mt-2">Based on each holding’s profit relative to total invested cost.</p>
             </div>
           </div>
         </div>

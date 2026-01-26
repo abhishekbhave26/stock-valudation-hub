@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, Trash2, BarChart3, CreditCard as Edit, RefreshCw, AlertTriangle, Search } from 'lucide-react';
+import { TrendingUp, TrendingDown, Trash2, BarChart3, CreditCard as Edit, RefreshCw, AlertTriangle, Search, Star } from 'lucide-react';
 import { SavedStock } from '../types';
 import { supabase } from '../lib/supabase';
 import { formatCurrency, formatPercentage, getPerformanceColor, calculateDCF } from '../utils/dcf';
@@ -15,7 +15,7 @@ export default function StockWatchlist() {
   const [sortBy, setSortBy] = useState<'ticker' | 'expectedReturn' | 'cagr' | 'buyTarget' | 'status' | 'lastUpdated'>('cagr');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [filterBy, setFilterBy] = useState<
-    'all' | 'undervalued' | 'overvalued' | 'cagr10' | 'cagr15' | 'cagr20'
+    'all' | 'favorites' | 'undervalued' | 'overvalued' | 'cagr10' | 'cagr15' | 'cagr20'
   >('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [editingStock, setEditingStock] = useState<SavedStock | null>(null);
@@ -73,7 +73,8 @@ export default function StockWatchlist() {
             fairValue: stock.fair_value,
             expectedReturn: totalReturn,
             cagr: cagr,
-            buyTarget: stock.buy_target
+            buyTarget: stock.buy_target,
+            isFavorite: stock.is_favorite ?? false
           };
         });
         setStocks(enrichedStocks);
@@ -117,6 +118,24 @@ export default function StockWatchlist() {
       loadStocks();
     } catch (error) {
       console.error('Error deleting stock:', error);
+    }
+  };
+
+  const toggleFavorite = async (stock: SavedStock) => {
+    try {
+      const nextValue = !stock.isFavorite;
+      const { error } = await supabase
+        .from('saved_stocks')
+        .update({ is_favorite: nextValue, updated_at: new Date().toISOString() })
+        .eq('id', stock.id);
+
+      if (error) throw error;
+
+      setStocks(prev =>
+        prev.map(item => (item.id === stock.id ? { ...item, isFavorite: nextValue } : item))
+      );
+    } catch (error) {
+      console.error('Error updating favorite status:', error);
     }
   };
 
@@ -341,6 +360,7 @@ export default function StockWatchlist() {
       }
       
       // Valuation filter
+      if (filterBy === 'favorites') return Boolean(stock.isFavorite);
       if (filterBy === 'undervalued') return stock.currentPrice < stock.fairValue;
       if (filterBy === 'overvalued') return stock.currentPrice > stock.fairValue;
       if (filterBy === 'cagr10') return stock.cagr >= 0.1;
@@ -699,6 +719,7 @@ export default function StockWatchlist() {
                 className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 min-w-0"
               >
                 <option value="all">All Stocks</option>
+                <option value="favorites">Favorites</option>
                 <option value="undervalued">Undervalued</option>
                 <option value="overvalued">Overvalued</option>
                 <option value="cagr10">CAGR ~ 10%</option>
@@ -733,6 +754,17 @@ export default function StockWatchlist() {
                   <tr key={stock.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleFavorite(stock)}
+                          className={`rounded-full p-1 transition-colors ${
+                            stock.isFavorite ? 'text-yellow-500' : 'text-gray-300 hover:text-yellow-400'
+                          }`}
+                          title={stock.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                          aria-label={stock.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                        >
+                          <Star className={`w-4 h-4 ${stock.isFavorite ? 'fill-current' : ''}`} />
+                        </button>
                         <div className="font-medium text-gray-900">{stock.ticker}</div>
                         {isStale && (
                           <AlertTriangle 
