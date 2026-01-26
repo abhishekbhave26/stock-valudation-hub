@@ -363,7 +363,8 @@ export default function PortfolioTracker() {
 
   const barChartData = portfolioStocks.map(stock => {
     const profitValue = (stock.totalValue || 0) - (stock.buy_price * stock.quantity);
-    const contributionPercent = totalCost > 0 ? (profitValue / totalCost) * 100 : 0;
+    const rawContribution = totalCost > 0 ? (profitValue / totalCost) * 100 : 0;
+    const contributionPercent = Math.round(rawContribution * 100) / 100;
 
     return {
       ticker: stock.ticker,
