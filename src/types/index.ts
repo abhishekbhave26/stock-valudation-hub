@@ -43,6 +43,7 @@ export interface SavedStock {
   createdAt: Date;
   updatedAt: Date;
   notes?: string;
+  isFavorite?: boolean;
 }
 
 export interface PortfolioStock {
