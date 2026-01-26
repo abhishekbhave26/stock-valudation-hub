@@ -233,60 +233,50 @@ export default function StockWatchlist() {
       // Use the optimized batch fetching
       const priceMap = await stockPriceService.getMultipleStockPrices(uniqueSymbols);
       // Prepare batch updates for database
-      const priceUpdates: { id: string; currentPrice: number }[] = [];
+      const priceUpdates: { id: string; currentPrice: number; expectedReturn?: number; cagr?: number }[] = [];
       
       stocks.forEach(stock => {
         const priceData = priceMap.get(stock.ticker);
         if (priceData) {
+          let expectedReturn = stock.expectedReturn;
+          let cagr = stock.cagr;
+          if (stock.dcf_inputs && stock.dcf_inputs.projectedPrices && stock.dcf_inputs.projectedPrices.length >= 5) {
+            const terminalValue = stock.dcf_inputs.projectedPrices[4];
+            expectedReturn = stock.fairValue > 0
+              ? (priceData.price - stock.fairValue) / stock.fairValue
+              : stock.expectedReturn;
+            cagr = terminalValue > 0 && priceData.price > 0
+              ? Math.pow(terminalValue / priceData.price, 1 / 5) - 1
+              : stock.cagr;
+          }
+
           priceUpdates.push({
             id: stock.id!,
-            currentPrice: priceData.price
+            currentPrice: priceData.price,
+            expectedReturn,
+            cagr
           });
         }
       });
       
-      // Batch update database - process in chunks of 10
-      const UPDATE_BATCH_SIZE = 10;
+      // Batch update database - process in larger chunks to reduce round trips
+      const UPDATE_BATCH_SIZE = 100;
       for (let i = 0; i < priceUpdates.length; i += UPDATE_BATCH_SIZE) {
         const batch = priceUpdates.slice(i, i + UPDATE_BATCH_SIZE);
         
-        const updatePromises = batch.map(async (update) => {
-          try {
-            // Recalculate CAGR and expected return based on new price
-            const stock = stocks.find(s => s.id === update.id);
-            if (stock && stock.dcf_inputs && stock.dcf_inputs.projectedPrices && stock.dcf_inputs.projectedPrices.length >= 5) {
-              const terminalValue = stock.dcf_inputs.projectedPrices[4];
-              const newExpectedReturn = stock.fairValue > 0 ? (update.currentPrice - stock.fairValue) / stock.fairValue : stock.expectedReturn;
-              const newCagr = terminalValue > 0 && update.currentPrice > 0 ? Math.pow(terminalValue / update.currentPrice, 1/5) - 1 : stock.cagr;
+        const payload = batch.map(update => ({
+          id: update.id,
+          current_price: update.currentPrice,
+          expected_return: update.expectedReturn,
+          cagr: update.cagr
+        }));
 
-              const { error } = await supabase
-                .from('saved_stocks')
-                .update({
-                  current_price: update.currentPrice,
-                  expected_return: newExpectedReturn,
-                  cagr: newCagr
-                })
-                .eq('id', update.id);
-            } else {
-            const { error } = await supabase
-              .from('saved_stocks')
-              .update({ current_price: update.currentPrice })
-              .eq('id', update.id);
-            }
-            
-            if (error) throw error;
-            return { success: true, id: update.id };
-          } catch (error) {
-            console.error(`Failed to update price for stock ${update.id}:`, error);
-            return { success: false, id: update.id };
-          }
-        });
-        
-        await Promise.allSettled(updatePromises);
-        
-        // Small delay between database update batches
-        if (i + UPDATE_BATCH_SIZE < priceUpdates.length) {
-          await new Promise(resolve => setTimeout(resolve, 100));
+        const { error } = await supabase
+          .from('saved_stocks')
+          .upsert(payload, { onConflict: 'id' });
+
+        if (error) {
+          console.error('Failed to update watchlist prices:', error);
         }
       }
       
