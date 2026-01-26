@@ -33,28 +33,6 @@ function App() {
     localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
-  const themeToggleBar = (
-    <div className="border-b border-gray-200 dark:border-slate-600 bg-white/80 dark:bg-slate-800/80 backdrop-blur">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 flex items-center justify-between text-xs sm:text-sm">
-        <span className="text-gray-500 dark:text-slate-400">Theme</span>
-        <button
-          type="button"
-          onClick={() => setIsDarkMode((prev) => !prev)}
-          className="relative inline-flex h-6 w-11 items-center rounded-full bg-gray-200 dark:bg-slate-600 transition-colors"
-          role="switch"
-          aria-checked={isDarkMode}
-        >
-          <span className="sr-only">Toggle dark mode</span>
-          <span
-            className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-              isDarkMode ? 'translate-x-6' : 'translate-x-1'
-            }`}
-          />
-        </button>
-      </div>
-    </div>
-  );
-
   const handleLogin = async (email: string, password: string) => {
     setAuthFormLoading(true);
     try {
@@ -202,14 +180,12 @@ function App() {
         onCancel={() => setShowChangePassword(false)}
         loading={authLoading}
         error={authError}
-        headerSlot={themeToggleBar}
       />
     );
   }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-800">
-      {themeToggleBar}
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-200 dark:bg-slate-800 dark:border-slate-600">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -224,24 +200,51 @@ function App() {
               </div>
             </div>
             <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
-              <div className="hidden md:flex items-center gap-2 text-sm text-gray-600 dark:text-slate-200">
-                <User className="w-4 h-4" />
-                <span className="truncate max-w-32">{user.user_metadata?.username || user.email}</span>
+              <div className="relative group">
+                <button
+                  type="button"
+                  className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 dark:text-slate-200 dark:hover:text-white dark:hover:bg-slate-700 rounded-lg transition-colors"
+                >
+                  <User className="w-4 h-4" />
+                  <span className="truncate max-w-32">{user.user_metadata?.username || user.email}</span>
+                </button>
+                <div className="absolute right-0 mt-2 w-56 rounded-lg border border-gray-200 bg-white shadow-lg opacity-0 invisible translate-y-1 transition-all duration-150 group-hover:opacity-100 group-hover:visible group-hover:translate-y-0 group-focus-within:opacity-100 group-focus-within:visible group-focus-within:translate-y-0 dark:border-slate-600 dark:bg-slate-800">
+                  <div className="py-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowChangePassword(true)}
+                      className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-slate-700"
+                    >
+                      <Lock className="w-4 h-4" />
+                      Change Password
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsDarkMode((prev) => !prev)}
+                      className="flex w-full items-center justify-between gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-slate-700"
+                      role="switch"
+                      aria-checked={isDarkMode}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 rounded-full bg-blue-500"></span>
+                        Toggle Mode
+                      </span>
+                      <span className="text-xs text-gray-500 dark:text-slate-400">
+                        {isDarkMode ? 'Dark' : 'Light'}
+                      </span>
+                    </button>
+                    <div className="my-1 border-t border-gray-100 dark:border-slate-700"></div>
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-slate-700"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      Logout
+                    </button>
+                  </div>
+                </div>
               </div>
-              <button
-                onClick={() => setShowChangePassword(true)}
-                className="hidden sm:flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 dark:text-slate-200 dark:hover:text-white dark:hover:bg-slate-700 rounded-lg transition-colors"
-              >
-                <Lock className="w-4 h-4" />
-                <span className="hidden lg:inline">Change Password</span>
-              </button>
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 dark:text-slate-200 dark:hover:text-white dark:hover:bg-slate-700 rounded-lg transition-colors"
-              >
-                <LogOut className="w-4 h-4" />
-                <span className="hidden sm:inline">Logout</span>
-              </button>
             </div>
           </div>
         </div>
