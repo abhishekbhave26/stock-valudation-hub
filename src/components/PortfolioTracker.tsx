@@ -294,31 +294,22 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
         };
       });
       
-      // Batch update database - process in chunks of 10
-      const UPDATE_BATCH_SIZE = 10;
+      // Batch update database - process in larger chunks to reduce round trips
+      const UPDATE_BATCH_SIZE = 100;
       for (let i = 0; i < priceUpdates.length; i += UPDATE_BATCH_SIZE) {
         const batch = priceUpdates.slice(i, i + UPDATE_BATCH_SIZE);
         
-        const updatePromises = batch.map(async (update) => {
-          try {
-            const { error } = await supabase
-              .from('portfolio_stocks')
-              .update({ current_price: update.currentPrice })
-              .eq('id', update.id);
-            
-            if (error) throw error;
-            return { success: true, id: update.id };
-          } catch (error) {
-            console.error(`Failed to update price for stock ${update.id}:`, error);
-            return { success: false, id: update.id };
-          }
-        });
-        
-        await Promise.allSettled(updatePromises);
-        
-        // Small delay between database update batches
-        if (i + UPDATE_BATCH_SIZE < priceUpdates.length) {
-          await new Promise(resolve => setTimeout(resolve, 100));
+        const payload = batch.map(update => ({
+          id: update.id,
+          current_price: update.currentPrice
+        }));
+
+        const { error } = await supabase
+          .from('portfolio_stocks')
+          .upsert(payload, { onConflict: 'id' });
+
+        if (error) {
+          console.error('Failed to update portfolio prices:', error);
         }
       }
 
