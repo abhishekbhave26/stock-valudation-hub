@@ -38,6 +38,7 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
   const [loadingPortfolio, setLoadingPortfolio] = useState(false);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [loadingSnapshots, setLoadingSnapshots] = useState(false);
+  const [deletingSnapshotId, setDeletingSnapshotId] = useState<string | null>(null);
   const [snapshotHoldings, setSnapshotHoldings] = useState<SnapshotHolding[]>([]);
   const [loadingHoldings, setLoadingHoldings] = useState(false);
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>('');
@@ -160,6 +161,45 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
     }
   };
 
+  const deleteSnapshot = async (snapshotId: string) => {
+    const confirmed = window.confirm(
+      'Do you intend to delete this snapshot and all holdings captured for it?'
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingSnapshotId(snapshotId);
+    try {
+      const { error: holdingsError } = await supabase
+        .from('portfolio_snapshot_holdings')
+        .delete()
+        .eq('snapshot_id', snapshotId);
+
+      if (holdingsError) throw holdingsError;
+
+      const { error: snapshotError } = await supabase
+        .from('portfolio_snapshots')
+        .delete()
+        .eq('id', snapshotId);
+
+      if (snapshotError) throw snapshotError;
+
+      setSnapshotHoldings(prevHoldings => prevHoldings.filter(holding => holding.snapshot_id !== snapshotId));
+      setSnapshots(prevSnapshots => {
+        const updated = prevSnapshots.filter(snapshot => snapshot.id !== snapshotId);
+        if (selectedSnapshotId === snapshotId) {
+          setSelectedSnapshotId(updated[0]?.id ?? '');
+        }
+        return updated;
+      });
+    } catch (error) {
+      console.error('Error deleting snapshot:', error);
+    } finally {
+      setDeletingSnapshotId(null);
+    }
+  };
+
   const totalCost = portfolioStocks.reduce((sum, stock) => sum + (stock.buy_price * stock.quantity), 0);
 
   const barChartData = portfolioStocks.map(stock => {
@@ -277,6 +317,7 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
                     <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Total Value</th>
                     <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Total Cost</th>
                     <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Total Return</th>
+                    <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -293,6 +334,16 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
                       </td>
                       <td className={`px-4 py-2 font-medium ${snapshot.total_return >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                         {formatPercentage(snapshot.total_return)}
+                      </td>
+                      <td className="px-4 py-2">
+                        <button
+                          type="button"
+                          onClick={() => deleteSnapshot(snapshot.id)}
+                          disabled={deletingSnapshotId === snapshot.id}
+                          className="text-xs font-semibold text-red-600 hover:text-red-700 disabled:text-gray-400"
+                        >
+                          {deletingSnapshotId === snapshot.id ? 'Deleting...' : 'Delete'}
+                        </button>
                       </td>
                     </tr>
                   ))}
