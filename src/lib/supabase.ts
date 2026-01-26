@@ -114,6 +114,47 @@ export type Database = {
           total_return?: number;
         };
       };
+      portfolio_snapshot_holdings: {
+        Row: {
+          id: string;
+          snapshot_id: string;
+          ticker: string;
+          quantity: number;
+          buy_price: number;
+          current_price: number;
+          total_value: number;
+          total_cost: number;
+          total_return: number;
+          weight_percent: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          snapshot_id: string;
+          ticker: string;
+          quantity: number;
+          buy_price: number;
+          current_price: number;
+          total_value: number;
+          total_cost: number;
+          total_return: number;
+          weight_percent: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          snapshot_id?: string;
+          ticker?: string;
+          quantity?: number;
+          buy_price?: number;
+          current_price?: number;
+          total_value?: number;
+          total_cost?: number;
+          total_return?: number;
+          weight_percent?: number;
+          created_at?: string;
+        };
+      };
     };
   };
 };

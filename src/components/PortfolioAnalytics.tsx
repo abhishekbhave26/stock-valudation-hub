@@ -134,7 +134,7 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
           <BarChart3 className="w-6 h-6 text-blue-600" />
           <div>
             <h2 className="text-xl font-semibold text-gray-800">Portfolio Analytics</h2>
-            <p className="text-sm text-gray-500">Review portfolio snapshots and return contribution insights.</p>
+            <p className="text-sm text-gray-500">Review portfolio snapshots (including holdings breakdowns) and return contribution insights.</p>
           </div>
         </div>
       </div>
@@ -193,7 +193,7 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
             <p className="text-gray-500 mt-2">Loading snapshots...</p>
           </div>
         ) : snapshots.length === 0 ? (
-          <p className="text-sm text-gray-500">No snapshots yet. Update prices to create your first snapshot.</p>
+          <p className="text-sm text-gray-500">No snapshots yet. Create one from the Portfolio Tracker to capture your holdings.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
