@@ -44,6 +44,10 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>('');
   const [baseSnapshotId, setBaseSnapshotId] = useState<string>('');
   const [compareSnapshotId, setCompareSnapshotId] = useState<string>('');
+  const [comparisonSort, setComparisonSort] = useState<{ key: 'ticker' | 'valueChange' | 'weightChange'; direction: 'asc' | 'desc' }>({
+    key: 'valueChange',
+    direction: 'desc'
+  });
 
   useEffect(() => {
     loadPortfolio();
@@ -332,6 +336,27 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
       };
     });
   }, [baseHoldingsByTicker, compareHoldingsByTicker, baseSnapshot, compareSnapshot]);
+  const sortedSnapshotComparisonRows = useMemo(() => {
+    const rows = [...snapshotComparisonRows];
+    rows.sort((a, b) => {
+      switch (comparisonSort.key) {
+        case 'ticker':
+          return comparisonSort.direction === 'asc'
+            ? a.ticker.localeCompare(b.ticker)
+            : b.ticker.localeCompare(a.ticker);
+        case 'weightChange':
+          return comparisonSort.direction === 'asc'
+            ? a.weightChange - b.weightChange
+            : b.weightChange - a.weightChange;
+        case 'valueChange':
+        default:
+          return comparisonSort.direction === 'asc'
+            ? a.valueChange - b.valueChange
+            : b.valueChange - a.valueChange;
+      }
+    });
+    return rows;
+  }, [snapshotComparisonRows, comparisonSort]);
   const snapshotComparisonSummary = useMemo(() => {
     const summary = {
       newPositions: 0,
@@ -390,6 +415,19 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
       yearsDiff
     };
   }, [baseSnapshot, compareSnapshot]);
+
+  const handleComparisonSort = (key: 'ticker' | 'valueChange' | 'weightChange') => {
+    setComparisonSort(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc'
+    }));
+  };
+  const sortIcon = (key: 'ticker' | 'valueChange' | 'weightChange') => {
+    if (comparisonSort.key !== key) {
+      return '↕';
+    }
+    return comparisonSort.direction === 'asc' ? '↑' : '↓';
+  };
 
   return (
     <div className="space-y-6">
@@ -605,16 +643,40 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-left">
                   <tr>
-                    <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Ticker</th>
+                    <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <button
+                        type="button"
+                        onClick={() => handleComparisonSort('ticker')}
+                        className="inline-flex items-center gap-1 text-gray-600 hover:text-gray-900"
+                      >
+                        Ticker <span className="text-[10px]">{sortIcon('ticker')}</span>
+                      </button>
+                    </th>
                     <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                     <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Qty (From → To)</th>
                     <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Price (From → To)</th>
-                    <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Value Change</th>
-                    <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Weight Δ</th>
+                    <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <button
+                        type="button"
+                        onClick={() => handleComparisonSort('valueChange')}
+                        className="inline-flex items-center gap-1 text-gray-600 hover:text-gray-900"
+                      >
+                        Value Change <span className="text-[10px]">{sortIcon('valueChange')}</span>
+                      </button>
+                    </th>
+                    <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <button
+                        type="button"
+                        onClick={() => handleComparisonSort('weightChange')}
+                        className="inline-flex items-center gap-1 text-gray-600 hover:text-gray-900"
+                      >
+                        Weight Δ <span className="text-[10px]">{sortIcon('weightChange')}</span>
+                      </button>
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {snapshotComparisonRows.map(row => (
+                  {sortedSnapshotComparisonRows.map(row => (
                     <tr key={row.ticker}>
                       <td className="px-4 py-2 text-gray-900 font-medium">{row.ticker}</td>
                       <td className="px-4 py-2 text-gray-700">{row.status}</td>
