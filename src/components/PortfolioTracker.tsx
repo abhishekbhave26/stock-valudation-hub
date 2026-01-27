@@ -233,7 +233,7 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
     if (portfolioStocks.length === 0) return;
     
     setUpdatingPrices(true);
-    const uniqueSymbols = [...new Set(portfolioStocks.map(stock => stock.ticker))];
+    const uniqueSymbols = [...new Set(portfolioStocks.map(stock => stock.ticker.toUpperCase()))];
     try {
       // Use the optimized batch fetching
       const priceMap = await stockPriceService.getMultipleStockPrices(uniqueSymbols);
@@ -241,7 +241,8 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
       const priceUpdates: { id: string; currentPrice: number }[] = [];
       
       portfolioStocks.forEach(stock => {
-        const priceData = priceMap.get(stock.ticker);
+        const normalizedTicker = stock.ticker.toUpperCase();
+        const priceData = priceMap.get(normalizedTicker);
         if (priceData) {
           priceUpdates.push({
             id: stock.id!,
@@ -251,7 +252,8 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
       });
       
       const updatedStocks = portfolioStocks.map(stock => {
-        const priceData = priceMap.get(stock.ticker);
+        const normalizedTicker = stock.ticker.toUpperCase();
+        const priceData = priceMap.get(normalizedTicker);
         const currentPrice = priceData?.price ?? stock.currentPrice ?? stock.buy_price;
         const totalValue = currentPrice * stock.quantity;
         return {
@@ -266,17 +268,26 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
       for (let i = 0; i < priceUpdates.length; i += UPDATE_BATCH_SIZE) {
         const batch = priceUpdates.slice(i, i + UPDATE_BATCH_SIZE);
         
-        const payload = batch.map(update => ({
-          id: update.id,
-          current_price: update.currentPrice
-        }));
+        const updatePromises = batch.map(async update => {
+          try {
+            const { error } = await supabase
+              .from('portfolio_stocks')
+              .update({ current_price: update.currentPrice })
+              .eq('id', update.id);
 
-        const { error } = await supabase
-          .from('portfolio_stocks')
-          .upsert(payload, { onConflict: 'id' });
+            if (error) throw error;
+            return { success: true, id: update.id };
+          } catch (error) {
+            console.error(`Failed to update portfolio price for stock ${update.id}:`, error);
+            return { success: false, id: update.id };
+          }
+        });
 
-        if (error) {
-          console.error('Failed to update portfolio prices:', error);
+        await Promise.allSettled(updatePromises);
+
+        // Small delay between database update batches
+        if (i + UPDATE_BATCH_SIZE < priceUpdates.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
       }
 
