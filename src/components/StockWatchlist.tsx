@@ -265,19 +265,30 @@ export default function StockWatchlist() {
       for (let i = 0; i < priceUpdates.length; i += UPDATE_BATCH_SIZE) {
         const batch = priceUpdates.slice(i, i + UPDATE_BATCH_SIZE);
         
-        const payload = batch.map(update => ({
-          id: update.id,
-          current_price: update.currentPrice,
-          expected_return: update.expectedReturn,
-          cagr: update.cagr
-        }));
+        const updatePromises = batch.map(async update => {
+          try {
+            const { error } = await supabase
+              .from('saved_stocks')
+              .update({
+                current_price: update.currentPrice,
+                expected_return: update.expectedReturn,
+                cagr: update.cagr
+              })
+              .eq('id', update.id);
 
-        const { error } = await supabase
-          .from('saved_stocks')
-          .upsert(payload, { onConflict: 'id' });
+            if (error) throw error;
+            return { success: true, id: update.id };
+          } catch (error) {
+            console.error(`Failed to update watchlist price for stock ${update.id}:`, error);
+            return { success: false, id: update.id };
+          }
+        });
 
-        if (error) {
-          console.error('Failed to update watchlist prices:', error);
+        await Promise.allSettled(updatePromises);
+
+        // Small delay between database update batches
+        if (i + UPDATE_BATCH_SIZE < priceUpdates.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
       }
       

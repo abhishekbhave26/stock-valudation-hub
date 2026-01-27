@@ -268,17 +268,26 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
       for (let i = 0; i < priceUpdates.length; i += UPDATE_BATCH_SIZE) {
         const batch = priceUpdates.slice(i, i + UPDATE_BATCH_SIZE);
         
-        const payload = batch.map(update => ({
-          id: update.id,
-          current_price: update.currentPrice
-        }));
+        const updatePromises = batch.map(async update => {
+          try {
+            const { error } = await supabase
+              .from('portfolio_stocks')
+              .update({ current_price: update.currentPrice })
+              .eq('id', update.id);
 
-        const { error } = await supabase
-          .from('portfolio_stocks')
-          .upsert(payload, { onConflict: 'id' });
+            if (error) throw error;
+            return { success: true, id: update.id };
+          } catch (error) {
+            console.error(`Failed to update portfolio price for stock ${update.id}:`, error);
+            return { success: false, id: update.id };
+          }
+        });
 
-        if (error) {
-          console.error('Failed to update portfolio prices:', error);
+        await Promise.allSettled(updatePromises);
+
+        // Small delay between database update batches
+        if (i + UPDATE_BATCH_SIZE < priceUpdates.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
       }
 
