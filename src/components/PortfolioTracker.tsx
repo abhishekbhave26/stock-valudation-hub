@@ -233,7 +233,7 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
     if (portfolioStocks.length === 0) return;
     
     setUpdatingPrices(true);
-    const uniqueSymbols = [...new Set(portfolioStocks.map(stock => stock.ticker))];
+    const uniqueSymbols = [...new Set(portfolioStocks.map(stock => stock.ticker.toUpperCase()))];
     try {
       // Use the optimized batch fetching
       const priceMap = await stockPriceService.getMultipleStockPrices(uniqueSymbols);
@@ -241,7 +241,8 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
       const priceUpdates: { id: string; currentPrice: number }[] = [];
       
       portfolioStocks.forEach(stock => {
-        const priceData = priceMap.get(stock.ticker);
+        const normalizedTicker = stock.ticker.toUpperCase();
+        const priceData = priceMap.get(normalizedTicker);
         if (priceData) {
           priceUpdates.push({
             id: stock.id!,
@@ -251,7 +252,8 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
       });
       
       const updatedStocks = portfolioStocks.map(stock => {
-        const priceData = priceMap.get(stock.ticker);
+        const normalizedTicker = stock.ticker.toUpperCase();
+        const priceData = priceMap.get(normalizedTicker);
         const currentPrice = priceData?.price ?? stock.currentPrice ?? stock.buy_price;
         const totalValue = currentPrice * stock.quantity;
         return {

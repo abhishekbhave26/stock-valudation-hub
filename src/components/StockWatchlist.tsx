@@ -228,7 +228,7 @@ export default function StockWatchlist() {
     if (stocks.length === 0) return;
     
     setUpdatingPrices(true);
-    const uniqueSymbols = [...new Set(stocks.map(stock => stock.ticker))];
+    const uniqueSymbols = [...new Set(stocks.map(stock => stock.ticker.toUpperCase()))];
     try {
       // Use the optimized batch fetching
       const priceMap = await stockPriceService.getMultipleStockPrices(uniqueSymbols);
@@ -236,7 +236,8 @@ export default function StockWatchlist() {
       const priceUpdates: { id: string; currentPrice: number; expectedReturn?: number; cagr?: number }[] = [];
       
       stocks.forEach(stock => {
-        const priceData = priceMap.get(stock.ticker);
+        const normalizedTicker = stock.ticker.toUpperCase();
+        const priceData = priceMap.get(normalizedTicker);
         if (priceData) {
           let expectedReturn = stock.expectedReturn;
           let cagr = stock.cagr;
