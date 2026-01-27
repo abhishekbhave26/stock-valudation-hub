@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { BarChart3, TrendingUp, Wallet } from 'lucide-react';
 import { PortfolioStock } from '../types';
 import { supabase } from '../lib/supabase';
@@ -42,6 +42,8 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
   const [snapshotHoldings, setSnapshotHoldings] = useState<SnapshotHolding[]>([]);
   const [loadingHoldings, setLoadingHoldings] = useState(false);
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>('');
+  const [baseSnapshotId, setBaseSnapshotId] = useState<string>('');
+  const [compareSnapshotId, setCompareSnapshotId] = useState<string>('');
 
   useEffect(() => {
     loadPortfolio();
@@ -52,11 +54,18 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
     if (snapshots.length === 0) {
       setSnapshotHoldings([]);
       setSelectedSnapshotId('');
+      setBaseSnapshotId('');
+      setCompareSnapshotId('');
       return;
     }
 
     if (!selectedSnapshotId) {
       setSelectedSnapshotId(snapshots[0]?.id ?? '');
+    }
+
+    if (!baseSnapshotId || !compareSnapshotId) {
+      setCompareSnapshotId(snapshots[0]?.id ?? '');
+      setBaseSnapshotId(snapshots[1]?.id ?? snapshots[0]?.id ?? '');
     }
 
     const snapshotIds = snapshots.map(snapshot => snapshot.id);
@@ -223,6 +232,22 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
   };
   const selectedSnapshot = snapshots.find(snapshot => snapshot.id === selectedSnapshotId);
   const selectedSnapshotHoldings = snapshotHoldings.filter(holding => holding.snapshot_id === selectedSnapshotId);
+  const snapshotsById = useMemo(
+    () => snapshots.reduce<Record<string, Snapshot>>((acc, snapshot) => {
+      acc[snapshot.id] = snapshot;
+      return acc;
+    }, {}),
+    [snapshots]
+  );
+  const holdingsBySnapshotId = useMemo(() => {
+    return snapshotHoldings.reduce<Record<string, SnapshotHolding[]>>((acc, holding) => {
+      if (!acc[holding.snapshot_id]) {
+        acc[holding.snapshot_id] = [];
+      }
+      acc[holding.snapshot_id].push(holding);
+      return acc;
+    }, {});
+  }, [snapshotHoldings]);
   const sortedHoldings = [...selectedSnapshotHoldings].sort((a, b) => b.weight_percent - a.weight_percent);
   const topTickers = sortedHoldings.slice(0, 5).map(holding => holding.ticker);
   const allocationTrendData = snapshots
@@ -239,6 +264,132 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
       return snapshotRow;
     });
   const allocationColors = ['#2563eb', '#16a34a', '#f97316', '#7c3aed', '#0ea5e9'];
+  const baseSnapshot = snapshotsById[baseSnapshotId];
+  const compareSnapshot = snapshotsById[compareSnapshotId];
+  const baseHoldings = holdingsBySnapshotId[baseSnapshotId] ?? [];
+  const compareHoldings = holdingsBySnapshotId[compareSnapshotId] ?? [];
+  const baseHoldingsByTicker = useMemo(() => {
+    return baseHoldings.reduce<Record<string, SnapshotHolding>>((acc, holding) => {
+      acc[holding.ticker] = holding;
+      return acc;
+    }, {});
+  }, [baseHoldings]);
+  const compareHoldingsByTicker = useMemo(() => {
+    return compareHoldings.reduce<Record<string, SnapshotHolding>>((acc, holding) => {
+      acc[holding.ticker] = holding;
+      return acc;
+    }, {});
+  }, [compareHoldings]);
+  const snapshotComparisonRows = useMemo(() => {
+    if (!baseSnapshot || !compareSnapshot) {
+      return [];
+    }
+    const tickers = Array.from(new Set([
+      ...Object.keys(baseHoldingsByTicker),
+      ...Object.keys(compareHoldingsByTicker)
+    ])).sort();
+
+    return tickers.map(ticker => {
+      const startHolding = baseHoldingsByTicker[ticker];
+      const endHolding = compareHoldingsByTicker[ticker];
+      const startQty = startHolding?.quantity ?? 0;
+      const endQty = endHolding?.quantity ?? 0;
+      const startPrice = startHolding?.current_price ?? 0;
+      const endPrice = endHolding?.current_price ?? 0;
+      const qtyChange = endQty - startQty;
+      const qtyChangePercent = startQty > 0 ? qtyChange / startQty : null;
+      const priceChange = endPrice - startPrice;
+      const priceChangePercent = startPrice > 0 ? priceChange / startPrice : null;
+      const valueChange = (endHolding?.total_value ?? 0) - (startHolding?.total_value ?? 0);
+      const weightChange = (endHolding?.weight_percent ?? 0) - (startHolding?.weight_percent ?? 0);
+
+      let status = 'Unchanged';
+      if (!startHolding && endHolding) {
+        status = 'New Position';
+      } else if (startHolding && !endHolding) {
+        status = 'Sold Out';
+      } else if (qtyChange > 0) {
+        status = 'Added';
+      } else if (qtyChange < 0) {
+        status = 'Trimmed';
+      } else if (priceChange !== 0) {
+        status = priceChange > 0 ? 'Price Up' : 'Price Down';
+      }
+
+      return {
+        ticker,
+        status,
+        startQty,
+        endQty,
+        qtyChange,
+        qtyChangePercent,
+        startPrice,
+        endPrice,
+        priceChange,
+        priceChangePercent,
+        valueChange,
+        weightChange
+      };
+    });
+  }, [baseHoldingsByTicker, compareHoldingsByTicker, baseSnapshot, compareSnapshot]);
+  const snapshotComparisonSummary = useMemo(() => {
+    const summary = {
+      newPositions: 0,
+      addedPositions: 0,
+      trimmedPositions: 0,
+      soldPositions: 0,
+      unchangedPositions: 0,
+      priceOnlyMoves: 0
+    };
+
+    snapshotComparisonRows.forEach(row => {
+      switch (row.status) {
+        case 'New Position':
+          summary.newPositions += 1;
+          break;
+        case 'Added':
+          summary.addedPositions += 1;
+          break;
+        case 'Trimmed':
+          summary.trimmedPositions += 1;
+          break;
+        case 'Sold Out':
+          summary.soldPositions += 1;
+          break;
+        case 'Price Up':
+        case 'Price Down':
+          summary.priceOnlyMoves += 1;
+          break;
+        default:
+          summary.unchangedPositions += 1;
+      }
+    });
+    return summary;
+  }, [snapshotComparisonRows]);
+  const snapshotPeriodMetrics = useMemo(() => {
+    if (!baseSnapshot || !compareSnapshot) {
+      return {
+        totalValueChange: 0,
+        totalReturn: 0,
+        cagr: 0,
+        yearsDiff: 0
+      };
+    }
+    const startValue = baseSnapshot.total_value;
+    const endValue = compareSnapshot.total_value;
+    const totalValueChange = endValue - startValue;
+    const totalReturn = startValue > 0 ? totalValueChange / startValue : 0;
+    const startDate = new Date(baseSnapshot.snapshot_at);
+    const endDate = new Date(compareSnapshot.snapshot_at);
+    const yearsDiff = (endDate.getTime() - startDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+    const cagr = yearsDiff > 0 && startValue > 0 ? Math.pow(endValue / startValue, 1 / yearsDiff) - 1 : 0;
+    return {
+      totalValueChange,
+      totalReturn,
+      cagr,
+      yearsDiff
+    };
+  }, [baseSnapshot, compareSnapshot]);
 
   return (
     <div className="space-y-6">
@@ -379,6 +530,125 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
                 </div>
               </div>
             )}
+          </>
+        )}
+      </div>
+
+      <div className="bg-white rounded-xl shadow-lg p-6">
+        <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-800">Snapshot Comparison (13F-Style)</h3>
+            <p className="text-xs text-gray-500">Compare two snapshots to identify new buys, trims, sells, and price-driven changes.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <select
+              value={baseSnapshotId}
+              onChange={(event) => setBaseSnapshotId(event.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+              disabled={snapshots.length < 2}
+            >
+              {snapshots.map(snapshot => (
+                <option key={snapshot.id} value={snapshot.id}>
+                  From {format(new Date(snapshot.snapshot_at), 'MMM dd, yyyy HH:mm')}
+                </option>
+              ))}
+            </select>
+            <select
+              value={compareSnapshotId}
+              onChange={(event) => setCompareSnapshotId(event.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+              disabled={snapshots.length < 2}
+            >
+              {snapshots.map(snapshot => (
+                <option key={snapshot.id} value={snapshot.id}>
+                  To {format(new Date(snapshot.snapshot_at), 'MMM dd, yyyy HH:mm')}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {snapshots.length < 2 ? (
+          <p className="text-sm text-gray-500">Create at least two snapshots to compare changes over time.</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+              <div className="bg-gray-50 rounded-lg p-4 text-center">
+                <p className="text-xs text-gray-500">Value Change</p>
+                <p className={`text-lg font-semibold ${snapshotPeriodMetrics.totalValueChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {formatCurrency(snapshotPeriodMetrics.totalValueChange)}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">Return {formatPercentage(snapshotPeriodMetrics.totalReturn)}</p>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-4 text-center">
+                <p className="text-xs text-gray-500">Period CAGR</p>
+                <p className={`text-lg font-semibold ${snapshotPeriodMetrics.cagr >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {formatPercentage(snapshotPeriodMetrics.cagr)}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {snapshotPeriodMetrics.yearsDiff > 0 ? `${snapshotPeriodMetrics.yearsDiff.toFixed(2)} yrs` : 'N/A'}
+                </p>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-4 text-center">
+                <p className="text-xs text-gray-500">Adds / Trims</p>
+                <p className="text-lg font-semibold text-gray-800">
+                  {snapshotComparisonSummary.addedPositions} / {snapshotComparisonSummary.trimmedPositions}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">New {snapshotComparisonSummary.newPositions} · Sold {snapshotComparisonSummary.soldPositions}</p>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-4 text-center">
+                <p className="text-xs text-gray-500">Price-Only Moves</p>
+                <p className="text-lg font-semibold text-gray-800">{snapshotComparisonSummary.priceOnlyMoves}</p>
+                <p className="text-xs text-gray-500 mt-1">Unchanged {snapshotComparisonSummary.unchangedPositions}</p>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-left">
+                  <tr>
+                    <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Ticker</th>
+                    <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Qty (From → To)</th>
+                    <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Price (From → To)</th>
+                    <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Value Change</th>
+                    <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Weight Δ</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {snapshotComparisonRows.map(row => (
+                    <tr key={row.ticker}>
+                      <td className="px-4 py-2 text-gray-900 font-medium">{row.ticker}</td>
+                      <td className="px-4 py-2 text-gray-700">{row.status}</td>
+                      <td className="px-4 py-2 text-gray-700">
+                        {row.startQty} → {row.endQty}{' '}
+                        {row.qtyChange !== 0 && (
+                          <span className={row.qtyChange > 0 ? 'text-green-600' : 'text-red-600'}>
+                            ({row.qtyChange > 0 ? '+' : ''}{row.qtyChange}
+                            {row.qtyChangePercent !== null ? `, ${formatPercentage(row.qtyChangePercent)}` : ''})
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-gray-700">
+                        {formatCurrency(row.startPrice)} → {formatCurrency(row.endPrice)}{' '}
+                        {row.priceChange !== 0 && row.priceChangePercent !== null && (
+                          <span className={row.priceChange > 0 ? 'text-green-600' : 'text-red-600'}>
+                            ({row.priceChange > 0 ? '+' : ''}{formatPercentage(row.priceChangePercent)})
+                          </span>
+                        )}
+                      </td>
+                      <td className={`px-4 py-2 font-medium ${row.valueChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {formatCurrency(row.valueChange)}
+                      </td>
+                      <td className={`px-4 py-2 font-medium ${row.weightChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {row.weightChange >= 0 ? '+' : ''}{row.weightChange.toFixed(2)}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              Returns and CAGR are based on total value changes between snapshots and do not adjust for external cash flows.
+            </p>
           </>
         )}
       </div>
