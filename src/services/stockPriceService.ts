@@ -17,9 +17,10 @@ class StockPriceService {
   private readonly API_KEY = import.meta.env.VITE_FINNHUB_API_KEY;
   private readonly BASE_URL = 'https://finnhub.io/api/v1';
   
-  // Rate limiting - Finnhub allows 60 calls/minute
-  private lastRequestTime = 0;
-  private readonly MIN_REQUEST_INTERVAL = 1000; // 1 second between requests (60 per minute)
+  // Rate limiting - Finnhub allows 30 calls/second
+  private readonly MAX_REQUESTS_PER_SECOND = 10;
+  private readonly MAX_CONCURRENT_REQUESTS = 10;
+  private requestTimestamps: number[] = [];
 
   constructor() {
     // Load cache from localStorage on initialization
@@ -52,16 +53,21 @@ class StockPriceService {
     return (now - cachedPrice.timestamp) < this.CACHE_DURATION;
   }
 
-  private async rateLimitedFetch(url: string): Promise<Response> {
-    const now = Date.now();
-    const timeSinceLastRequest = now - this.lastRequestTime;
-    
-    if (timeSinceLastRequest < this.MIN_REQUEST_INTERVAL) {
-      const waitTime = this.MIN_REQUEST_INTERVAL - timeSinceLastRequest;
-      await new Promise(resolve => setTimeout(resolve, waitTime));
+  private async waitForRateLimit(): Promise<void> {
+    while (true) {
+      const now = Date.now();
+      this.requestTimestamps = this.requestTimestamps.filter(timestamp => now - timestamp < 1000);
+      if (this.requestTimestamps.length < this.MAX_REQUESTS_PER_SECOND) {
+        this.requestTimestamps.push(now);
+        return;
+      }
+      const waitTime = 1000 - (now - this.requestTimestamps[0]);
+      await new Promise(resolve => setTimeout(resolve, Math.max(waitTime, 50)));
     }
-    
-    this.lastRequestTime = Date.now();
+  }
+
+  private async rateLimitedFetch(url: string): Promise<Response> {
+    await this.waitForRateLimit();
     return fetch(url);
   }
 
@@ -87,7 +93,20 @@ class StockPriceService {
     try {
       // Fetch from Finnhub API
       const url = `${this.BASE_URL}/quote?symbol=${normalizedSymbol}&token=${this.API_KEY}`;
-      const response = await this.rateLimitedFetch(url);
+      let response: Response | null = null;
+      const maxRetries = 3;
+      for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
+        response = await this.rateLimitedFetch(url);
+        if (response.status !== 429) {
+          break;
+        }
+        const backoffMs = 250 * attempt;
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
+      }
+      
+      if (!response) {
+        throw new Error('No response from Finnhub');
+      }
       
       if (!response.ok) {
         console.error('API response not ok:', response.status, response.statusText);
@@ -147,38 +166,26 @@ class StockPriceService {
   async getMultipleStockPrices(symbols: string[]): Promise<Map<string, StockPrice>> {
     const results = new Map<string, StockPrice>();
     const uniqueSymbols = [...new Set(symbols.map(s => s.toUpperCase()))];
-    
-    // Create batches to respect rate limits (30 concurrent requests max)
-    const BATCH_SIZE = 30;
-    const batches = [];
-    
-    for (let i = 0; i < uniqueSymbols.length; i += BATCH_SIZE) {
-      batches.push(uniqueSymbols.slice(i, i + BATCH_SIZE));
-    }
-    
-    // Process batches sequentially, but symbols within each batch in parallel
-    for (const batch of batches) {
-      const batchPromises = batch.map(async (symbol) => {
+
+    const queue = [...uniqueSymbols];
+    const workers = Array.from({ length: this.MAX_CONCURRENT_REQUESTS }, async () => {
+      while (queue.length > 0) {
+        const symbol = queue.shift();
+        if (!symbol) {
+          return;
+        }
         try {
           const price = await this.getStockPrice(symbol);
           if (price) {
             results.set(symbol, price);
           }
-          return { symbol, success: true };
         } catch (error) {
           console.error(`Failed to fetch price for ${symbol}:`, error);
-          return { symbol, success: false };
         }
-      });
-      
-      // Wait for all requests in this batch to complete
-      const batchResults = await Promise.allSettled(batchPromises);
-      const successCount = batchResults.filter(r => r.status === 'fulfilled').length;
-      // Small delay between batches to be respectful to the API
-      if (batches.indexOf(batch) < batches.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
       }
-    }
+    });
+
+    await Promise.all(workers);
     
     return results;
   }
