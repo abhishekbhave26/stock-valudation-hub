@@ -39,7 +39,8 @@ export interface SavedStock {
   expectedReturn: number;
   cagr: number;
   buyTarget: number;
-  dcfInputs: DCFInputs;
+  dcf_inputs?: DCFInputs;
+  dcfInputs?: DCFInputs;
   createdAt: Date;
   updatedAt: Date;
   notes?: string;
@@ -50,9 +51,11 @@ export interface PortfolioStock {
   id?: string;
   ticker: string;
   quantity: number;
-  buyPrice: number;
+  buyPrice?: number;
   purchaseDate: Date;
+  buy_price?: number;
   currentPrice?: number;
+  current_price?: number;
   totalValue?: number;
   totalReturn?: number;
   cagr?: number;

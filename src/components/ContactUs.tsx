@@ -227,8 +227,8 @@ export default function ContactUs() {
               <div>
                 <h3 className="font-semibold text-gray-900 mb-2">Can I export my data?</h3>
                 <p className="text-gray-600 text-sm">
-                  Currently, data export is not available, but it's on our roadmap. 
-                  Contact us if this is a priority feature for you.
+                  Yes! You can export both your watchlist and portfolio tracker data as CSV files
+                  directly from those sections.
                 </p>
               </div>
             </div>

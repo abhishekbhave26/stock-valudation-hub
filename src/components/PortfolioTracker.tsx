@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, TrendingUp, TrendingDown, Wallet, Filter, CreditCard as Edit, Save, X, PieChart, Grid2x2 as Grid, List, RefreshCw, Camera } from 'lucide-react';
+import { Plus, TrendingUp, TrendingDown, Wallet, Filter, CreditCard as Edit, Save, X, PieChart, Grid2x2 as Grid, List, RefreshCw, Camera, Download } from 'lucide-react';
 import { PortfolioStock } from '../types';
 import { supabase } from '../lib/supabase';
 import { formatCurrency, formatPercentage } from '../utils/dcf';
@@ -7,6 +7,7 @@ import { format } from 'date-fns';
 import { PieChart as RechartsPieChart, Cell, ResponsiveContainer, Tooltip, Pie } from 'recharts';
 import { stockPriceService } from '../services/stockPriceService';
 import { useAuth } from '../hooks/useAuth';
+import { downloadCsv } from '../utils/csv';
 
 type PortfolioTrackerProps = {
   isDarkMode?: boolean;
@@ -371,6 +372,37 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
     }
   };
 
+  const exportPortfolioCsv = () => {
+    if (portfolioStocks.length === 0) return;
+
+    const rows = portfolioStocks.map(stock => {
+      const resolvedCurrentPrice = stock.currentPrice ?? stock.current_price ?? stock.buy_price ?? stock.buyPrice;
+      const resolvedBuyPrice = stock.buy_price ?? stock.buyPrice;
+      const totalValue = stock.totalValue ?? resolvedCurrentPrice * stock.quantity;
+      const portfolioPercent = totalPortfolioValue > 0 ? (totalValue / totalPortfolioValue) * 100 : 0;
+      const positionTotalReturn = resolvedBuyPrice > 0
+        ? (totalValue - resolvedBuyPrice * stock.quantity) / (resolvedBuyPrice * stock.quantity)
+        : 0;
+      const cagr = stock.cagr ?? 0;
+
+      return {
+        Ticker: stock.ticker,
+        Quantity: stock.quantity,
+        'Buy Price': resolvedBuyPrice,
+        'Current Price': resolvedCurrentPrice,
+        'Total Value': totalValue,
+        'Portfolio %': portfolioPercent,
+        'Total Return (%)': positionTotalReturn * 100,
+        'CAGR (%)': cagr * 100,
+        'Purchase Date': format(stock.purchaseDate, 'yyyy-MM-dd'),
+        'Portfolio Total Return (%)': totalReturn * 100,
+        'Portfolio CAGR (%)': portfolioCAGR * 100
+      };
+    });
+
+    downloadCsv('portfolio-tracker.csv', rows);
+  };
+
   const filteredAndSortedStocks = portfolioStocks
     .filter(stock => {
       if (filterBy === 'positive') return (stock.totalReturn || 0) > 0;
@@ -576,6 +608,15 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
                       >
                         <RefreshCw className={`w-4 h-4 ${updatingPrices ? 'animate-spin' : ''}`} />
                         {updatingPrices ? 'Updating...' : 'Update Prices'}
+                      </button>
+
+                      <button
+                        onClick={exportPortfolioCsv}
+                        disabled={portfolioStocks.length === 0}
+                        className="flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <Download className="w-4 h-4" />
+                        Export CSV
                       </button>
 
                       <button

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, Trash2, BarChart3, CreditCard as Edit, RefreshCw, AlertTriangle, Search, Star } from 'lucide-react';
+import { TrendingUp, TrendingDown, Trash2, BarChart3, CreditCard as Edit, RefreshCw, AlertTriangle, Search, Star, Download } from 'lucide-react';
 import { SavedStock } from '../types';
 import { supabase } from '../lib/supabase';
 import { formatCurrency, formatPercentage, getPerformanceColor, calculateDCF } from '../utils/dcf';
@@ -7,6 +7,7 @@ import { DCFInputs } from '../types';
 import { stockPriceService } from '../services/stockPriceService';
 import { useAuth } from '../hooks/useAuth';
 import { format, differenceInDays } from 'date-fns';
+import { downloadCsv } from '../utils/csv';
 
 export default function StockWatchlist() {
   const { user } = useAuth();
@@ -357,6 +358,85 @@ export default function StockWatchlist() {
     return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
   };
 
+  const exportWatchlistCsv = () => {
+    if (stocks.length === 0) return;
+
+    const rows = stocks.map(stock => {
+      const dcfInputs = stock.dcf_inputs ?? stock.dcfInputs;
+      if (!dcfInputs) {
+        return {
+          Ticker: stock.ticker,
+          'Current Price': stock.currentPrice,
+          'Desired Return (%)': '',
+          'Valuation Metric': '',
+          'Valuation Multiple': '',
+          'Base Metric Per Share': '',
+          'Growth Rate Y1 (%)': '',
+          'Growth Rate Y2 (%)': '',
+          'Growth Rate Y3 (%)': '',
+          'Growth Rate Y4 (%)': '',
+          'Growth Rate Y5 (%)': '',
+          'Projected Metric Y1': '',
+          'Projected Metric Y2': '',
+          'Projected Metric Y3': '',
+          'Projected Metric Y4': '',
+          'Projected Metric Y5': '',
+          'Projected Price Y1': '',
+          'Projected Price Y2': '',
+          'Projected Price Y3': '',
+          'Projected Price Y4': '',
+          'Projected Price Y5': '',
+          'Fair Value': stock.fairValue,
+          'Total Return (%)': stock.expectedReturn * 100,
+          'CAGR (%)': stock.cagr * 100,
+          'Buy Target': stock.buyTarget,
+          'Terminal Value': '',
+          'Present Value': '',
+          'Last Updated': format(new Date(stock.updatedAt), 'yyyy-MM-dd')
+        };
+      }
+
+      const resolvedInputs = {
+        ...dcfInputs,
+        currentPrice: stock.currentPrice
+      } as DCFInputs;
+      const { results } = calculateDCF(resolvedInputs);
+
+      return {
+        Ticker: stock.ticker,
+        'Current Price': stock.currentPrice,
+        'Desired Return (%)': resolvedInputs.desiredReturn,
+        'Valuation Metric': resolvedInputs.valuationMetric,
+        'Valuation Multiple': resolvedInputs.valuationMultiple,
+        'Base Metric Per Share': resolvedInputs.baseMetricPerShare,
+        'Growth Rate Y1 (%)': resolvedInputs.growthRates[0],
+        'Growth Rate Y2 (%)': resolvedInputs.growthRates[1],
+        'Growth Rate Y3 (%)': resolvedInputs.growthRates[2],
+        'Growth Rate Y4 (%)': resolvedInputs.growthRates[3],
+        'Growth Rate Y5 (%)': resolvedInputs.growthRates[4],
+        'Projected Metric Y1': results.projectedValues[0],
+        'Projected Metric Y2': results.projectedValues[1],
+        'Projected Metric Y3': results.projectedValues[2],
+        'Projected Metric Y4': results.projectedValues[3],
+        'Projected Metric Y5': results.projectedValues[4],
+        'Projected Price Y1': results.projectedPrices[0],
+        'Projected Price Y2': results.projectedPrices[1],
+        'Projected Price Y3': results.projectedPrices[2],
+        'Projected Price Y4': results.projectedPrices[3],
+        'Projected Price Y5': results.projectedPrices[4],
+        'Fair Value': results.fairValue,
+        'Total Return (%)': results.totalReturn * 100,
+        'CAGR (%)': results.cagr * 100,
+        'Buy Target': results.buyTargetPrice,
+        'Terminal Value': results.terminalValue,
+        'Present Value': results.presentValue,
+        'Last Updated': format(new Date(stock.updatedAt), 'yyyy-MM-dd')
+      };
+    });
+
+    downloadCsv('stock-watchlist.csv', rows);
+  };
+
   const filteredAndSortedStocks = stocks
     .filter(stock => {
       // Search filter
@@ -681,6 +761,16 @@ export default function StockWatchlist() {
               >
                 <RefreshCw className={`w-4 h-4 ${updatingPrices ? 'animate-spin' : ''}`} />
                 {updatingPrices ? 'Updating...' : 'Update Prices'}
+              </button>
+
+              <button
+                onClick={exportWatchlistCsv}
+                disabled={stocks.length === 0}
+                className="flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                title="Export watchlist to CSV"
+              >
+                <Download className="w-4 h-4" />
+                Export CSV
               </button>
               
               <div className="relative flex-1 sm:max-w-xs">
