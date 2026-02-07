@@ -145,6 +145,21 @@ export default function StockInput({ onCalculate, loading }: StockInputProps) {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
+              Valuation Multiple
+            </label>
+            <input
+              type="number"
+              value={formData.valuationMultiple}
+              onChange={(e) => handleInputChange('valuationMultiple', parseFloat(e.target.value))}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="e.g., 25"
+              step="0.1"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
               Valuation Metric
             </label>
             <select
@@ -158,21 +173,6 @@ export default function StockInput({ onCalculate, loading }: StockInputProps) {
                 </option>
               ))}
             </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Valuation Multiple
-            </label>
-            <input
-              type="number"
-              value={formData.valuationMultiple}
-              onChange={(e) => handleInputChange('valuationMultiple', parseFloat(e.target.value))}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="e.g., 25"
-              step="0.1"
-              required
-            />
           </div>
 
           <div>

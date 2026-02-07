@@ -27,6 +27,15 @@ export default function StockWatchlist() {
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
 
   const WATCHLIST_LIMIT = 500;
+  const valuationMetrics = [
+    { value: 'P/S', label: 'Price-to-Sales (P/S)' },
+    { value: 'P/E', label: 'Price-to-Earnings (P/E)' },
+    { value: 'P/FCF', label: 'Price-to-Free Cash Flow (P/FCF)' },
+    { value: 'P/B', label: 'Price-to-Book (P/B)' },
+    { value: 'P/OCF', label: 'Price-to-Operating Cash Flow (P/OCF)' },
+    { value: 'EV/Sales', label: 'EV/Sales' },
+    { value: 'EV/EBITDA', label: 'EV/EBITDA' }
+  ];
 
   useEffect(() => {
     loadStocks();
@@ -540,16 +549,32 @@ export default function StockWatchlist() {
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Valuation Multiple</label>
-                    <input
-                      type="number"
-                      value={editForm.valuationMultiple}
-                      onChange={(e) => handleEditFormChange('valuationMultiple', parseFloat(e.target.value))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
-                      step="0.1"
-                    />
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Valuation Multiple</label>
+                      <input
+                        type="number"
+                        value={editForm.valuationMultiple}
+                        onChange={(e) => handleEditFormChange('valuationMultiple', parseFloat(e.target.value))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                        step="0.1"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Valuation Metric</label>
+                      <select
+                        value={editForm.valuationMetric}
+                        onChange={(e) => handleEditFormChange('valuationMetric', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                      >
+                        {valuationMetrics.map(metric => (
+                          <option key={metric.value} value={metric.value}>
+                            {metric.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Base Metric Per Share</label>
