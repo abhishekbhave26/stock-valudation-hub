@@ -304,6 +304,7 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
       const qtyChangePercent = startQty > 0 ? qtyChange / startQty : null;
       const priceChange = endPrice - startPrice;
       const priceChangePercent = startPrice > 0 ? priceChange / startPrice : null;
+      const priceImpactOnly = priceChange * startQty;
       const valueChange = (endHolding?.total_value ?? 0) - (startHolding?.total_value ?? 0);
       const weightChange = (endHolding?.weight_percent ?? 0) - (startHolding?.weight_percent ?? 0);
 
@@ -331,6 +332,7 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
         endPrice,
         priceChange,
         priceChangePercent,
+        priceImpactOnly,
         valueChange,
         weightChange
       };
@@ -443,15 +445,15 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
 
   const bestPerformers = useMemo(() => {
     return snapshotComparisonRows
-      .filter(row => row.valueChange > 0)
-      .sort((a, b) => b.valueChange - a.valueChange)
+      .filter(row => row.priceImpactOnly > 0)
+      .sort((a, b) => b.priceImpactOnly - a.priceImpactOnly)
       .slice(0, 5);
   }, [snapshotComparisonRows]);
 
   const worstPerformers = useMemo(() => {
     return snapshotComparisonRows
-      .filter(row => row.valueChange < 0)
-      .sort((a, b) => a.valueChange - b.valueChange)
+      .filter(row => row.priceImpactOnly < 0)
+      .sort((a, b) => a.priceImpactOnly - b.priceImpactOnly)
       .slice(0, 5);
   }, [snapshotComparisonRows]);
 
@@ -520,7 +522,17 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
   }, [baseHoldingsByTicker, compareHoldingsByTicker, baseSnapshot, compareSnapshot]);
 
   const cumulativeReturnMetrics = useMemo(() => {
-    if (snapshots.length < 2) return { overallReturn: 0, overallCagr: 0, yearsElapsed: 0 };
+    if (snapshots.length < 2) {
+      return {
+        overallReturn: 0,
+        overallCagr: 0,
+        yearsElapsed: 0,
+        daysElapsed: 0,
+        startDate: null as Date | null,
+        endDate: null as Date | null,
+        cagrAvailable: false
+      };
+    }
 
     const firstSnapshot = snapshots[snapshots.length - 1];
     const lastSnapshot = snapshots[0];
@@ -530,10 +542,20 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
 
     const startDate = new Date(firstSnapshot.snapshot_at);
     const endDate = new Date(lastSnapshot.snapshot_at);
-    const yearsElapsed = (endDate.getTime() - startDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
-    const cagr = yearsElapsed > 0 && startValue > 0 ? Math.pow(endValue / startValue, 1 / yearsElapsed) - 1 : 0;
+    const daysElapsed = Math.max(0, (endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000));
+    const yearsElapsed = daysElapsed / 365.25;
+    const cagrAvailable = yearsElapsed >= 1 / 12 && startValue > 0;
+    const cagr = cagrAvailable ? Math.pow(endValue / startValue, 1 / yearsElapsed) - 1 : 0;
 
-    return { overallReturn: totalReturn, overallCagr: cagr, yearsElapsed };
+    return {
+      overallReturn: totalReturn,
+      overallCagr: cagr,
+      yearsElapsed,
+      daysElapsed,
+      startDate,
+      endDate,
+      cagrAvailable
+    };
   }, [snapshots]);
 
   return (
@@ -560,14 +582,31 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
               <p className={`text-2xl font-bold mt-1 ${cumulativeReturnMetrics.overallReturn >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                 {formatPercentage(cumulativeReturnMetrics.overallReturn)}
               </p>
-              <p className="text-xs text-gray-600 mt-1">{cumulativeReturnMetrics.yearsElapsed.toFixed(1)} years</p>
+              <p className="text-xs text-gray-600 mt-1">
+                {cumulativeReturnMetrics.startDate && cumulativeReturnMetrics.endDate
+                  ? `${format(cumulativeReturnMetrics.startDate, 'MMM dd, yyyy')} → ${format(cumulativeReturnMetrics.endDate, 'MMM dd, yyyy')}`
+                  : ' '}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                {cumulativeReturnMetrics.yearsElapsed.toFixed(2)} years ({Math.round(cumulativeReturnMetrics.daysElapsed)} days)
+              </p>
             </div>
             <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 text-center">
               <p className="text-xs text-gray-600">CAGR</p>
-              <p className={`text-2xl font-bold mt-1 ${cumulativeReturnMetrics.overallCagr >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {formatPercentage(cumulativeReturnMetrics.overallCagr)}
+              <p
+                className={`text-2xl font-bold mt-1 ${
+                  cumulativeReturnMetrics.cagrAvailable
+                    ? cumulativeReturnMetrics.overallCagr >= 0
+                      ? 'text-green-600'
+                      : 'text-red-600'
+                    : 'text-gray-500'
+                }`}
+              >
+                {cumulativeReturnMetrics.cagrAvailable ? formatPercentage(cumulativeReturnMetrics.overallCagr) : 'N/A'}
               </p>
-              <p className="text-xs text-gray-600 mt-1">Annualized return</p>
+              <p className="text-xs text-gray-600 mt-1">
+                {cumulativeReturnMetrics.cagrAvailable ? 'Annualized return' : 'Requires ≥ 1 month of data'}
+              </p>
             </div>
             <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 text-center">
               <p className="text-xs text-gray-600">Concentration (HHI)</p>
@@ -580,6 +619,9 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
               <p className="text-xs text-gray-600 mt-1">Unique holdings</p>
             </div>
           </div>
+          <p className="text-xs text-gray-500 mt-3">
+            Total return and CAGR are calculated using the earliest and latest portfolio snapshots shown above.
+          </p>
         </div>
       )}
 
@@ -661,7 +703,9 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
             <Activity className="w-5 h-5 text-indigo-600" />
             <h3 className="text-lg font-semibold text-gray-800">Value Attribution Analysis</h3>
           </div>
-          <p className="text-xs text-gray-500 mb-4">Breakdown of what drove value changes: buying/selling vs price appreciation</p>
+          <p className="text-xs text-gray-500 mb-4">
+            Breakdown of what drove value changes: buying/selling vs price appreciation.
+          </p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-left">
@@ -691,8 +735,8 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
             </table>
           </div>
           <p className="text-xs text-gray-500 mt-2">
-            <span className="font-medium">Qty Impact:</span> profit/loss from buying/selling at different prices •{' '}
-            <span className="font-medium">Price Impact:</span> profit/loss from price appreciation/depreciation
+            <span className="font-medium">Qty Impact:</span> impact from changing share counts (buys/sells) at prior prices •{' '}
+            <span className="font-medium">Price Impact:</span> impact from price moves on held shares
           </p>
         </div>
       )}
@@ -700,6 +744,7 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
       {bestPerformers.length > 0 && worstPerformers.length > 0 && (
         <div className="bg-white rounded-xl shadow-lg p-6">
           <h3 className="text-lg font-semibold text-gray-800 mb-4">Best & Worst Performers</h3>
+          <p className="text-xs text-gray-500 mb-4">Ranked by price impact only (quantity changes excluded).</p>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div>
               <h4 className="text-sm font-semibold text-green-600 mb-3">Top Gainers</h4>
@@ -711,7 +756,7 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
                       <span className="font-medium text-gray-900">{performer.ticker}</span>
                     </div>
                     <div className="text-right">
-                      <div className="text-sm font-bold text-green-600">{formatCurrency(performer.valueChange)}</div>
+                      <div className="text-sm font-bold text-green-600">{formatCurrency(performer.priceImpactOnly)}</div>
                       <div className="text-xs text-gray-500">{performer.weightChange > 0 ? '+' : ''}{performer.weightChange.toFixed(2)}% weight</div>
                     </div>
                   </div>
@@ -728,7 +773,7 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
                       <span className="font-medium text-gray-900">{performer.ticker}</span>
                     </div>
                     <div className="text-right">
-                      <div className="text-sm font-bold text-red-600">{formatCurrency(performer.valueChange)}</div>
+                      <div className="text-sm font-bold text-red-600">{formatCurrency(performer.priceImpactOnly)}</div>
                       <div className="text-xs text-gray-500">{performer.weightChange > 0 ? '+' : ''}{performer.weightChange.toFixed(2)}% weight</div>
                     </div>
                   </div>
