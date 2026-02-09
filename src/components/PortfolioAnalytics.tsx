@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BarChart3, TrendingUp, Wallet } from 'lucide-react';
+import { BarChart3, TrendingUp, Wallet, TrendingDown, Activity } from 'lucide-react';
 import { PortfolioStock } from '../types';
 import { supabase } from '../lib/supabase';
 import { formatCurrency, formatPercentage } from '../utils/dcf';
 import { format } from 'date-fns';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, AreaChart, Area, PieChart, Pie, Cell } from 'recharts';
 import { useAuth } from '../hooks/useAuth';
 
 type PortfolioAnalyticsProps = {
@@ -429,6 +429,113 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
     return comparisonSort.direction === 'asc' ? '↑' : '↓';
   };
 
+  const portfolioGrowthData = useMemo(() => {
+    return snapshots
+      .slice()
+      .reverse()
+      .map(snapshot => ({
+        date: format(new Date(snapshot.snapshot_at), 'MMM dd'),
+        value: snapshot.total_value,
+        cost: snapshot.total_cost,
+        gain: snapshot.total_value - snapshot.total_cost
+      }));
+  }, [snapshots]);
+
+  const bestPerformers = useMemo(() => {
+    return snapshotComparisonRows
+      .filter(row => row.valueChange > 0)
+      .sort((a, b) => b.valueChange - a.valueChange)
+      .slice(0, 5);
+  }, [snapshotComparisonRows]);
+
+  const worstPerformers = useMemo(() => {
+    return snapshotComparisonRows
+      .filter(row => row.valueChange < 0)
+      .sort((a, b) => a.valueChange - b.valueChange)
+      .slice(0, 5);
+  }, [snapshotComparisonRows]);
+
+  const portfolioConcentration = useMemo(() => {
+    if (selectedSnapshotHoldings.length === 0) return { hhi: 0, top3: 0, top5: 0, diversification: 0 };
+
+    const weights = selectedSnapshotHoldings.map(h => h.weight_percent / 100);
+    const hhi = weights.reduce((sum, w) => sum + (w * w), 0) * 10000;
+
+    const sortedByWeight = [...selectedSnapshotHoldings].sort((a, b) => b.weight_percent - a.weight_percent);
+    const top3 = sortedByWeight.slice(0, 3).reduce((sum, h) => sum + h.weight_percent, 0);
+    const top5 = sortedByWeight.slice(0, 5).reduce((sum, h) => sum + h.weight_percent, 0);
+    const diversification = selectedSnapshotHoldings.length;
+
+    return { hhi, top3, top5, diversification };
+  }, [selectedSnapshotHoldings]);
+
+  const positionValueTrendData = useMemo(() => {
+    if (topTickers.length === 0) return [];
+
+    return snapshots
+      .slice()
+      .reverse()
+      .map(snapshot => {
+        const row: Record<string, string | number> = {
+          date: format(new Date(snapshot.snapshot_at), 'MMM dd')
+        };
+        topTickers.forEach(ticker => {
+          const holding = snapshotHoldings.find(
+            item => item.snapshot_id === snapshot.id && item.ticker === ticker
+          );
+          row[ticker] = holding ? holding.total_value : 0;
+        });
+        return row;
+      });
+  }, [snapshots, topTickers, snapshotHoldings]);
+
+  const valueAttributionData = useMemo(() => {
+    if (!baseSnapshot || !compareSnapshot) return [];
+
+    const tickers = Array.from(new Set([
+      ...Object.keys(baseHoldingsByTicker),
+      ...Object.keys(compareHoldingsByTicker)
+    ])).sort();
+
+    return tickers
+      .map(ticker => {
+        const startHolding = baseHoldingsByTicker[ticker];
+        const endHolding = compareHoldingsByTicker[ticker];
+
+        const qtyImpact = ((endHolding?.quantity ?? 0) - (startHolding?.quantity ?? 0)) * (startHolding?.current_price ?? 0);
+        const priceImpact = (endHolding?.current_price ?? 0) - (startHolding?.current_price ?? 0);
+        const quantityAtEnd = (endHolding?.quantity ?? startHolding?.quantity ?? 0);
+        const priceImpactTotal = priceImpact * quantityAtEnd;
+
+        return {
+          ticker,
+          qtyImpact,
+          priceImpactTotal,
+          totalChange: (endHolding?.total_value ?? 0) - (startHolding?.total_value ?? 0)
+        };
+      })
+      .filter(row => row.totalChange !== 0)
+      .sort((a, b) => Math.abs(b.totalChange) - Math.abs(a.totalChange))
+      .slice(0, 8);
+  }, [baseHoldingsByTicker, compareHoldingsByTicker, baseSnapshot, compareSnapshot]);
+
+  const cumulativeReturnMetrics = useMemo(() => {
+    if (snapshots.length < 2) return { overallReturn: 0, overallCagr: 0, yearsElapsed: 0 };
+
+    const firstSnapshot = snapshots[snapshots.length - 1];
+    const lastSnapshot = snapshots[0];
+    const startValue = firstSnapshot.total_value;
+    const endValue = lastSnapshot.total_value;
+    const totalReturn = startValue > 0 ? (endValue - startValue) / startValue : 0;
+
+    const startDate = new Date(firstSnapshot.snapshot_at);
+    const endDate = new Date(lastSnapshot.snapshot_at);
+    const yearsElapsed = (endDate.getTime() - startDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+    const cagr = yearsElapsed > 0 && startValue > 0 ? Math.pow(endValue / startValue, 1 / yearsElapsed) - 1 : 0;
+
+    return { overallReturn: totalReturn, overallCagr: cagr, yearsElapsed };
+  }, [snapshots]);
+
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6">
@@ -436,10 +543,281 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
           <BarChart3 className="w-6 h-6 text-blue-600" />
           <div>
             <h2 className="text-xl font-semibold text-gray-800">Portfolio Analytics</h2>
-            <p className="text-sm text-gray-500">Review portfolio snapshots (including holdings breakdowns) and return contribution insights.</p>
+            <p className="text-sm text-gray-500">Review portfolio snapshots, performance trends, concentration metrics, and historical analysis.</p>
           </div>
         </div>
       </div>
+
+      {snapshots.length >= 2 && (
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <TrendingUp className="w-5 h-5 text-green-600" />
+            <h3 className="text-lg font-semibold text-gray-800">Portfolio Performance Overview</h3>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 text-center">
+              <p className="text-xs text-gray-600">Total Return</p>
+              <p className={`text-2xl font-bold mt-1 ${cumulativeReturnMetrics.overallReturn >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {formatPercentage(cumulativeReturnMetrics.overallReturn)}
+              </p>
+              <p className="text-xs text-gray-600 mt-1">{cumulativeReturnMetrics.yearsElapsed.toFixed(1)} years</p>
+            </div>
+            <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 text-center">
+              <p className="text-xs text-gray-600">CAGR</p>
+              <p className={`text-2xl font-bold mt-1 ${cumulativeReturnMetrics.overallCagr >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {formatPercentage(cumulativeReturnMetrics.overallCagr)}
+              </p>
+              <p className="text-xs text-gray-600 mt-1">Annualized return</p>
+            </div>
+            <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 text-center">
+              <p className="text-xs text-gray-600">Concentration (HHI)</p>
+              <p className="text-2xl font-bold mt-1 text-purple-600">{portfolioConcentration.hhi.toFixed(0)}</p>
+              <p className="text-xs text-gray-600 mt-1">{portfolioConcentration.hhi > 2500 ? 'Concentrated' : portfolioConcentration.hhi > 1500 ? 'Moderate' : 'Diversified'}</p>
+            </div>
+            <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg p-4 text-center">
+              <p className="text-xs text-gray-600">Positions</p>
+              <p className="text-2xl font-bold mt-1 text-amber-600">{portfolioConcentration.diversification}</p>
+              <p className="text-xs text-gray-600 mt-1">Unique holdings</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {portfolioGrowthData.length >= 2 && (
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <Activity className="w-5 h-5 text-blue-600" />
+            <h3 className="text-lg font-semibold text-gray-800">Portfolio Value Progression</h3>
+          </div>
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={portfolioGrowthData}>
+                <defs>
+                  <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
+                <XAxis dataKey="date" tick={{ fill: chartTextColor }} />
+                <YAxis tick={{ fill: chartTextColor }} />
+                <Tooltip
+                  contentStyle={tooltipStyles}
+                  formatter={(value) => formatCurrency(value as number)}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="value"
+                  stroke="#3b82f6"
+                  fill="url(#colorValue)"
+                  name="Portfolio Value"
+                  strokeWidth={2}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">Tracks total portfolio market value across all snapshots.</p>
+        </div>
+      )}
+
+      {topTickers.length > 0 && positionValueTrendData.length >= 2 && (
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <TrendingUp className="w-5 h-5 text-emerald-600" />
+            <h3 className="text-lg font-semibold text-gray-800">Top Holdings Value Trends</h3>
+          </div>
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={positionValueTrendData}>
+                <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
+                <XAxis dataKey="date" tick={{ fill: chartTextColor }} />
+                <YAxis tick={{ fill: chartTextColor }} />
+                <Tooltip
+                  contentStyle={tooltipStyles}
+                  formatter={(value) => formatCurrency(value as number)}
+                />
+                <Legend />
+                {topTickers.map((ticker, index) => (
+                  <Area
+                    key={ticker}
+                    type="monotone"
+                    dataKey={ticker}
+                    stackId="1"
+                    fill={allocationColors[index % allocationColors.length]}
+                    name={ticker}
+                    stroke={allocationColors[index % allocationColors.length]}
+                  />
+                ))}
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">Shows how top holdings' absolute values evolved over time (stacked).</p>
+        </div>
+      )}
+
+      {baseSnapshot && compareSnapshot && valueAttributionData.length > 0 && (
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <Activity className="w-5 h-5 text-indigo-600" />
+            <h3 className="text-lg font-semibold text-gray-800">Value Attribution Analysis</h3>
+          </div>
+          <p className="text-xs text-gray-500 mb-4">Breakdown of what drove value changes: buying/selling vs price appreciation</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-left">
+                <tr>
+                  <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Ticker</th>
+                  <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Qty Impact</th>
+                  <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Price Impact</th>
+                  <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Total Change</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {valueAttributionData.map(row => (
+                  <tr key={row.ticker}>
+                    <td className="px-4 py-2 text-gray-900 font-medium">{row.ticker}</td>
+                    <td className={`px-4 py-2 font-medium ${row.qtyImpact >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {formatCurrency(row.qtyImpact)}
+                    </td>
+                    <td className={`px-4 py-2 font-medium ${row.priceImpactTotal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {formatCurrency(row.priceImpactTotal)}
+                    </td>
+                    <td className={`px-4 py-2 font-bold ${row.totalChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {formatCurrency(row.totalChange)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            <span className="font-medium">Qty Impact:</span> profit/loss from buying/selling at different prices •{' '}
+            <span className="font-medium">Price Impact:</span> profit/loss from price appreciation/depreciation
+          </p>
+        </div>
+      )}
+
+      {bestPerformers.length > 0 && worstPerformers.length > 0 && (
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <h3 className="text-lg font-semibold text-gray-800 mb-4">Best & Worst Performers</h3>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div>
+              <h4 className="text-sm font-semibold text-green-600 mb-3">Top Gainers</h4>
+              <div className="space-y-2">
+                {bestPerformers.map((performer, idx) => (
+                  <div key={performer.ticker} className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-green-600">{idx + 1}</span>
+                      <span className="font-medium text-gray-900">{performer.ticker}</span>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-bold text-green-600">{formatCurrency(performer.valueChange)}</div>
+                      <div className="text-xs text-gray-500">{performer.weightChange > 0 ? '+' : ''}{performer.weightChange.toFixed(2)}% weight</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <h4 className="text-sm font-semibold text-red-600 mb-3">Top Losers</h4>
+              <div className="space-y-2">
+                {worstPerformers.map((performer, idx) => (
+                  <div key={performer.ticker} className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-red-600">{idx + 1}</span>
+                      <span className="font-medium text-gray-900">{performer.ticker}</span>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-bold text-red-600">{formatCurrency(performer.valueChange)}</div>
+                      <div className="text-xs text-gray-500">{performer.weightChange > 0 ? '+' : ''}{performer.weightChange.toFixed(2)}% weight</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedSnapshotHoldings.length > 0 && (
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <BarChart3 className="w-5 h-5 text-purple-600" />
+            <h3 className="text-lg font-semibold text-gray-800">Portfolio Concentration Details</h3>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div>
+              <div className="space-y-4">
+                <div className="p-4 bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="text-xs text-gray-600 font-medium">Concentration Index (HHI)</p>
+                      <p className="text-3xl font-bold text-purple-600 mt-1">{portfolioConcentration.hhi.toFixed(0)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs font-semibold px-2 py-1 bg-white rounded text-purple-600">
+                        {portfolioConcentration.hhi > 2500 ? 'Concentrated' : portfolioConcentration.hhi > 1500 ? 'Moderate' : 'Diversified'}
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-600 mt-2">Scale: 0-10,000 (higher = more concentrated)</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 bg-blue-50 rounded-lg text-center">
+                    <p className="text-xs text-gray-600">Top 3 Holdings</p>
+                    <p className="text-xl font-bold text-blue-600 mt-1">{portfolioConcentration.top3.toFixed(1)}%</p>
+                  </div>
+                  <div className="p-3 bg-blue-50 rounded-lg text-center">
+                    <p className="text-xs text-gray-600">Top 5 Holdings</p>
+                    <p className="text-xl font-bold text-blue-600 mt-1">{portfolioConcentration.top5.toFixed(1)}%</p>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-gray-50 rounded-lg">
+                  <p className="text-xs text-gray-600 mb-2">Concentration Analysis</p>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-700">Diversification Score:</span>
+                      <span className="font-medium text-gray-900">{Math.round((portfolioConcentration.diversification / 20) * 100)}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div
+                        className="bg-gradient-to-r from-blue-400 to-blue-600 h-2 rounded-full"
+                        style={{ width: `${Math.min((portfolioConcentration.diversification / 20) * 100, 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-sm font-medium text-gray-700 mb-3">Top 7 Holdings by Weight</p>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={selectedSnapshotHoldings.sort((a, b) => b.weight_percent - a.weight_percent).slice(0, 7)}
+                      dataKey="weight_percent"
+                      nameKey="ticker"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={80}
+                      label={({ ticker, weight_percent }) => `${ticker} ${weight_percent.toFixed(1)}%`}
+                    >
+                      {allocationColors.map((color, idx) => (
+                        <Cell key={`cell-${idx}`} fill={color} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value) => `${(value as number).toFixed(2)}%`} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="bg-white rounded-xl shadow-lg p-6">
         <div className="flex items-center gap-3 mb-4">
