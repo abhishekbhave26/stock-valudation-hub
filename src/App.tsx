@@ -9,7 +9,7 @@ import ContactUs from './components/ContactUs';
 import AuthForm from './components/AuthForm';
 import ChangePasswordForm from './components/ChangePasswordForm';
 import { useAuth } from './hooks/useAuth';
-import { supabase } from './lib/supabase';
+import { supabase, isSupabaseConfigured } from './lib/supabase';
 
 function App() {
   const { user, loading: authLoading, error: authError, signIn, signUp, signOut, resetPassword, updatePassword } = useAuth();
@@ -151,6 +151,41 @@ function App() {
       console.error('Error saving stock:', error);
     }
   };
+
+  // Show a clear error page when Supabase env vars are not set in the deployment
+  if (!isSupabaseConfigured) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+        <div className="max-w-lg w-full bg-white rounded-xl shadow-lg p-8 text-center">
+          <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            </svg>
+          </div>
+          <h1 className="text-xl font-bold text-gray-900 mb-2">App Not Configured</h1>
+          <p className="text-gray-600 mb-6">
+            The Supabase environment variables are missing from this deployment.
+            The app cannot connect to the database without them.
+          </p>
+          <div className="bg-gray-50 rounded-lg p-4 text-left mb-6">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Required environment variables</p>
+            <div className="space-y-2">
+              {(['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY'] as const).map(key => (
+                <div key={key} className="flex items-center gap-2">
+                  <span className="inline-block w-2.5 h-2.5 rounded-full bg-red-400 flex-shrink-0" />
+                  <code className="text-sm font-mono text-gray-800">{key}</code>
+                </div>
+              ))}
+            </div>
+          </div>
+          <p className="text-sm text-gray-500">
+            In Netlify: go to <strong>Site settings → Environment variables</strong>, add these
+            two variables with your Supabase project values, then <strong>trigger a new deploy</strong>.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   // Show loading spinner while checking auth
   if (authLoading) {

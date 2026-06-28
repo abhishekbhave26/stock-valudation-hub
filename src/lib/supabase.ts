@@ -1,19 +1,39 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://placeholder.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'placeholder-anon-key';
+const rawUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const rawKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    // Keep sessions for 7 days (604800 seconds)
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-    // Set session expiry to 7 days
-    storage: window.localStorage,
-    storageKey: 'supabase.auth.token'
+const PLACEHOLDER_URL = 'https://placeholder.supabase.co';
+const PLACEHOLDER_KEY = 'placeholder-anon-key';
+
+const isValidUrl = (val: string | undefined): val is string =>
+  !!val && val.startsWith('https://') && !val.includes('placeholder');
+
+const isValidKey = (val: string | undefined): val is string =>
+  !!val && val.length > 20 && !val.includes('placeholder');
+
+export const isSupabaseConfigured = isValidUrl(rawUrl) && isValidKey(rawKey);
+
+if (!isSupabaseConfigured) {
+  console.warn(
+    '[Supabase] Missing or invalid env vars VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY. ' +
+    'Set them in Netlify → Site settings → Environment variables, then redeploy.'
+  );
+}
+
+export const supabase = createClient(
+  rawUrl || PLACEHOLDER_URL,
+  rawKey || PLACEHOLDER_KEY,
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+      storageKey: 'supabase.auth.token'
+    }
   }
-});
+);
 
 export type Database = {
   public: {
