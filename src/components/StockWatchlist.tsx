@@ -192,10 +192,6 @@ export default function StockWatchlist() {
     { value: 'EV/EBITDA', label: 'EV/EBITDA' }
   ];
 
-  useEffect(() => {
-    loadStocks();
-  }, [loadStocks]);
-
   const loadStocks = useCallback(async () => {
     if (!user?.email) {
       setStocks([]);
@@ -265,6 +261,15 @@ export default function StockWatchlist() {
       setLoading(false);
     }
   }, [user]);
+
+  // NOTE: this effect must stay below the loadStocks definition — its
+  // dependency array reads `loadStocks` during render, and reading the
+  // `const` before its declaration throws
+  // "Cannot access 'loadStocks' before initialization" (that is what
+  // crashed the PR #36 preview: the effect used to sit above this line).
+  useEffect(() => {
+    loadStocks();
+  }, [loadStocks]);
 
   const deleteStock = useCallback(async (stock: SavedStock) => {
     const confirmed = window.confirm(`Are you sure you want to delete ${stock.ticker} from your watchlist?`);
