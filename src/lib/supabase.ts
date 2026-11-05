@@ -82,6 +82,29 @@ export type Database = {
           is_favorite?: boolean;
         };
       };
+      stock_price_history: {
+        Row: {
+          id: string;
+          user_email: string;
+          ticker: string;
+          price: number;
+          recorded_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_email: string;
+          ticker: string;
+          price: number;
+          recorded_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_email?: string;
+          ticker?: string;
+          price?: number;
+          recorded_at?: string;
+        };
+      };
       portfolio_stocks: {
         Row: {
           id: string;
