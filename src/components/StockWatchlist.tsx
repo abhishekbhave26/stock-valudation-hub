@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, Trash2, BarChart3, CreditCard as Edit, RefreshCw, AlertTriangle, Search, Star, Download } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
+import { TrendingUp, TrendingDown, Trash2, BarChart3, CreditCard as Edit, RefreshCw, AlertTriangle, Search, Star, Download, X } from 'lucide-react';
 import { SavedStock } from '../types';
 import { supabase } from '../lib/supabase';
 import { formatCurrency, formatPercentage, getPerformanceColor, calculateDCF } from '../utils/dcf';
@@ -8,6 +8,158 @@ import { stockPriceService } from '../services/stockPriceService';
 import { useAuth } from '../hooks/useAuth';
 import { format, differenceInDays } from 'date-fns';
 import { downloadCsv } from '../utils/csv';
+
+// Pure helpers (module scope so the memoized row and the sorted list can share them
+// without re-creating them on every render).
+const getValuationStatus = (stock: SavedStock) => {
+  const currentPrice = stock.currentPrice;
+  const fairValue = stock.fairValue;
+
+  if (currentPrice <= fairValue * 0.8) return { status: 'strong-buy', color: 'bg-green-600', text: 'Strong Buy' };
+  if (currentPrice <= fairValue) return { status: 'buy', color: 'bg-green-500', text: 'Buy' };
+  if (currentPrice <= fairValue * 1.2) return { status: 'hold', color: 'bg-yellow-500', text: 'Hold' };
+  return { status: 'overvalued', color: 'bg-red-600', text: 'Overvalued' };
+};
+
+const getCurrentValuation = (stock: SavedStock) => {
+  const metric = stock.dcf_inputs?.valuationMetric;
+  const baseMetric = stock.dcf_inputs?.baseMetricPerShare;
+  if (!metric || !baseMetric || baseMetric === 0) return null;
+  const currentValuation = stock.currentPrice / baseMetric;
+  return {
+    value: currentValuation,
+    metric
+  };
+};
+
+const isStockStale = (stock: SavedStock) => {
+  const updatedAt = new Date(stock.updatedAt);
+  const daysSinceUpdate = differenceInDays(new Date(), updatedAt);
+  return daysSinceUpdate > 90;
+};
+
+interface StockWatchlistRowProps {
+  stock: SavedStock;
+  /** True when the latest price update failed for this ticker (last known price shown). */
+  priceUpdateFailed: boolean;
+  onToggleFavorite: (stock: SavedStock) => void;
+  onEdit: (stock: SavedStock) => void;
+  onDelete: (stock: SavedStock) => void;
+}
+
+// Memoized so typing in search, toggling sort/filter, or opening the edit modal
+// doesn't re-render all 67 rows — only rows whose stock or props changed re-render.
+const StockWatchlistRow = memo(function StockWatchlistRow({
+  stock,
+  priceUpdateFailed,
+  onToggleFavorite,
+  onEdit,
+  onDelete
+}: StockWatchlistRowProps) {
+  const valuation = getValuationStatus(stock);
+  const isStale = isStockStale(stock);
+  const currentValuation = getCurrentValuation(stock);
+
+  return (
+    <tr className="hover:bg-gray-50">
+      <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onToggleFavorite(stock)}
+            className={`rounded-full p-1 transition-colors ${
+              stock.isFavorite ? 'text-yellow-500' : 'text-gray-300 hover:text-yellow-400'
+            }`}
+            title={stock.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+            aria-label={stock.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+          >
+            <Star className={`w-4 h-4 ${stock.isFavorite ? 'fill-current' : ''}`} />
+          </button>
+          <div className="font-medium text-gray-900">{stock.ticker}</div>
+          {isStale && (
+            <AlertTriangle
+              className="w-4 h-4 text-red-500"
+              title={`Last updated ${format(new Date(stock.updatedAt), 'MMM dd, yyyy')} - over 90 days ago`}
+            />
+          )}
+          {priceUpdateFailed && (
+            <AlertTriangle
+              className="w-4 h-4 text-amber-500"
+              title="Price failed to update — showing last known price"
+            />
+          )}
+        </div>
+      </td>
+      <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
+        <div className="text-sm font-medium text-gray-900">
+          {formatCurrency(stock.currentPrice)}
+        </div>
+        {priceUpdateFailed && (
+          <div className="text-xs text-amber-600">Price not updated</div>
+        )}
+      </td>
+      <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
+        <div className="text-xs space-y-1">
+          {stock.dcf_inputs && stock.dcf_inputs.projectedPrices && (
+            <>
+              <div>1Y: {formatCurrency(stock.dcf_inputs.projectedPrices[0] || 0)}</div>
+              <div>3Y: {formatCurrency(stock.dcf_inputs.projectedPrices[2] || 0)}</div>
+              <div>5Y: {formatCurrency(stock.dcf_inputs.projectedPrices[4] || 0)}</div>
+            </>
+          )}
+        </div>
+      </td>
+      <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
+        <div className={`text-sm font-medium ${getPerformanceColor(stock.cagr, 'cagr')}`}>
+          {formatPercentage(stock.cagr)}
+        </div>
+      </td>
+      <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
+        {currentValuation ? (
+          <div className="text-sm font-medium text-gray-900">
+            {currentValuation.value.toFixed(2)} {currentValuation.metric}
+          </div>
+        ) : (
+          <div className="text-sm text-gray-400">—</div>
+        )}
+      </td>
+      <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
+        <div className="text-sm font-medium text-blue-600">
+          {formatCurrency(stock.buyTarget)}
+        </div>
+      </td>
+      <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
+        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-white ${valuation.color}`}>
+          {valuation.text}
+        </span>
+      </td>
+      <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
+        <div className={`text-sm ${isStale ? 'text-red-600 font-medium' : 'text-gray-900'}`}>
+          {format(new Date(stock.updatedAt), 'MMM dd, yyyy')}
+        </div>
+        {isStale && (
+          <div className="text-xs text-red-500">Needs update</div>
+        )}
+      </td>
+      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-medium">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onEdit(stock)}
+            className="text-blue-600 hover:text-blue-900"
+          >
+            <Edit className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => onDelete(stock)}
+            className="text-red-600 hover:text-red-900"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+});
 
 export default function StockWatchlist() {
   const { user } = useAuth();
@@ -25,6 +177,9 @@ export default function StockWatchlist() {
   const [editWarnings, setEditWarnings] = useState<any[]>([]);
   const [updatingPrices, setUpdatingPrices] = useState(false);
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
+  // Tickers (uppercase) whose price failed to update on the last explicit refresh.
+  // Shown in a banner + row warning; cleared on the next update that succeeds for them.
+  const [failedPriceTickers, setFailedPriceTickers] = useState<string[]>([]);
 
   const WATCHLIST_LIMIT = 500;
   const valuationMetrics = [
@@ -39,9 +194,9 @@ export default function StockWatchlist() {
 
   useEffect(() => {
     loadStocks();
-  }, [user]);
+  }, [loadStocks]);
 
-  const loadStocks = async () => {
+  const loadStocks = useCallback(async () => {
     if (!user?.email) {
       setStocks([]);
       return;
@@ -109,29 +264,26 @@ export default function StockWatchlist() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
 
-  const deleteStock = async (id: string) => {
-    const stock = stocks.find(s => s.id === id);
-    if (!stock) return;
-    
+  const deleteStock = useCallback(async (stock: SavedStock) => {
     const confirmed = window.confirm(`Are you sure you want to delete ${stock.ticker} from your watchlist?`);
     if (!confirmed) return;
-    
+
     try {
       const { error } = await supabase
         .from('saved_stocks')
         .delete()
-        .eq('id', id);
+        .eq('id', stock.id);
 
       if (error) throw error;
       loadStocks();
     } catch (error) {
       console.error('Error deleting stock:', error);
     }
-  };
+  }, [loadStocks]);
 
-  const toggleFavorite = async (stock: SavedStock) => {
+  const toggleFavorite = useCallback(async (stock: SavedStock) => {
     try {
       const nextValue = !stock.isFavorite;
       const { error } = await supabase
@@ -147,9 +299,9 @@ export default function StockWatchlist() {
     } catch (error) {
       console.error('Error updating favorite status:', error);
     }
-  };
+  }, []);
 
-  const startEdit = (stock: SavedStock) => {
+  const startEdit = useCallback((stock: SavedStock) => {
     setEditingStock(stock);
     const formData = {
       ...stock.dcf_inputs,
@@ -158,12 +310,12 @@ export default function StockWatchlist() {
       investorRelationsLink: stock.dcf_inputs?.investorRelationsLink || ''
     };
     setEditForm(formData);
-    
+
     // Calculate initial results
     const { results, warnings } = calculateDCF(formData);
     setEditResults(results);
     setEditWarnings(warnings);
-  };
+  }, []);
 
   const cancelEdit = () => {
     setEditingStock(null);
@@ -240,8 +392,12 @@ export default function StockWatchlist() {
     setUpdatingPrices(true);
     const uniqueSymbols = [...new Set(stocks.map(stock => stock.ticker.toUpperCase()))];
     try {
-      // Use the optimized batch fetching
-      const priceMap = await stockPriceService.getMultipleStockPrices(uniqueSymbols);
+      // Explicit refresh: bypass the 4-hour local cache so this always fetches live prices.
+      const priceMap = await stockPriceService.getMultipleStockPrices(uniqueSymbols, { forceRefresh: true });
+      // Any ticker with no price in the map failed to fetch — surface it instead
+      // of silently leaving yesterday's price in place. Setting the list (even
+      // to empty) also clears failures from the previous update.
+      setFailedPriceTickers(uniqueSymbols.filter(symbol => !priceMap.has(symbol)));
       // Prepare batch updates for database
       const priceUpdates: { id: string; currentPrice: number; expectedReturn?: number; cagr?: number }[] = [];
       
@@ -310,33 +466,6 @@ export default function StockWatchlist() {
     } finally {
       setUpdatingPrices(false);
     }
-  };
-
-  const getValuationStatus = (stock: SavedStock) => {
-    const currentPrice = stock.currentPrice;
-    const fairValue = stock.fairValue;
-    
-    if (currentPrice <= fairValue * 0.8) return { status: 'strong-buy', color: 'bg-green-600', text: 'Strong Buy' };
-    if (currentPrice <= fairValue) return { status: 'buy', color: 'bg-green-500', text: 'Buy' };
-    if (currentPrice <= fairValue * 1.2) return { status: 'hold', color: 'bg-yellow-500', text: 'Hold' };
-    return { status: 'overvalued', color: 'bg-red-600', text: 'Overvalued' };
-  };
-
-  const getCurrentValuation = (stock: SavedStock) => {
-    const metric = stock.dcf_inputs?.valuationMetric;
-    const baseMetric = stock.dcf_inputs?.baseMetricPerShare;
-    if (!metric || !baseMetric || baseMetric === 0) return null;
-    const currentValuation = stock.currentPrice / baseMetric;
-    return {
-      value: currentValuation,
-      metric
-    };
-  };
-
-  const isStockStale = (stock: SavedStock) => {
-    const updatedAt = new Date(stock.updatedAt);
-    const daysSinceUpdate = differenceInDays(new Date(), updatedAt);
-    return daysSinceUpdate > 90;
   };
 
   const toggleNotesExpansion = (stockId: string) => {
@@ -446,7 +575,7 @@ export default function StockWatchlist() {
     downloadCsv('stock-watchlist.csv', rows);
   };
 
-  const filteredAndSortedStocks = stocks
+  const filteredAndSortedStocks = useMemo(() => stocks
     .filter(stock => {
       // Search filter
       if (searchTerm && !stock.ticker.toLowerCase().includes(searchTerm.toLowerCase())) {
@@ -491,7 +620,7 @@ export default function StockWatchlist() {
       }
       
       return sortDirection === 'desc' ? comparison : -comparison;
-    });
+    }), [stocks, searchTerm, filterBy, sortBy, sortDirection]);
 
   if (loading) {
     return (
@@ -854,119 +983,57 @@ export default function StockWatchlist() {
           </div>
         </div>
       </div>
+      {/* Price update failures */}
+      {failedPriceTickers.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3" role="alert">
+          <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-amber-800">
+              {failedPriceTickers.length} {failedPriceTickers.length === 1 ? 'price' : 'prices'} failed to update: {failedPriceTickers.join(', ')}
+            </p>
+            <p className="text-sm text-amber-700">
+              Showing last known prices for these stocks. Try Update Prices again to retry.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setFailedPriceTickers([])}
+            className="text-amber-600 hover:text-amber-800 flex-shrink-0"
+            title="Dismiss"
+            aria-label="Dismiss price update failure notice"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      )}
       {/* Stock Table */}
       <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-[75vh]">
           <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
+            <thead className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Price</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Target Prices</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">CAGR</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Valuation</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Buy Target</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Updated</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Stock</th>
+                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Current Price</th>
+                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Target Prices</th>
+                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">CAGR</th>
+                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Current Valuation</th>
+                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Buy Target</th>
+                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Status</th>
+                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Last Updated</th>
+                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredAndSortedStocks.map((stock) => {
-                const valuation = getValuationStatus(stock);
-                const isStale = isStockStale(stock);
-                const currentValuation = getCurrentValuation(stock);
-                return (
-                  <tr key={stock.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => toggleFavorite(stock)}
-                          className={`rounded-full p-1 transition-colors ${
-                            stock.isFavorite ? 'text-yellow-500' : 'text-gray-300 hover:text-yellow-400'
-                          }`}
-                          title={stock.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-                          aria-label={stock.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-                        >
-                          <Star className={`w-4 h-4 ${stock.isFavorite ? 'fill-current' : ''}`} />
-                        </button>
-                        <div className="font-medium text-gray-900">{stock.ticker}</div>
-                        {isStale && (
-                          <AlertTriangle 
-                            className="w-4 h-4 text-red-500" 
-                            title={`Last updated ${format(new Date(stock.updatedAt), 'MMM dd, yyyy')} - over 90 days ago`}
-                          />
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">
-                        {formatCurrency(stock.currentPrice)}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-xs space-y-1">
-                        {stock.dcf_inputs && stock.dcf_inputs.projectedPrices && (
-                          <>
-                            <div>1Y: {formatCurrency(stock.dcf_inputs.projectedPrices[0] || 0)}</div>
-                            <div>3Y: {formatCurrency(stock.dcf_inputs.projectedPrices[2] || 0)}</div>
-                            <div>5Y: {formatCurrency(stock.dcf_inputs.projectedPrices[4] || 0)}</div>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className={`text-sm font-medium ${getPerformanceColor(stock.cagr, 'cagr')}`}>
-                        {formatPercentage(stock.cagr)}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {currentValuation ? (
-                        <div className="text-sm font-medium text-gray-900">
-                          {currentValuation.value.toFixed(2)} {currentValuation.metric}
-                        </div>
-                      ) : (
-                        <div className="text-sm text-gray-400">—</div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-blue-600">
-                        {formatCurrency(stock.buyTarget)}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-white ${valuation.color}`}>
-                        {valuation.text}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className={`text-sm ${isStale ? 'text-red-600 font-medium' : 'text-gray-900'}`}>
-                        {format(new Date(stock.updatedAt), 'MMM dd, yyyy')}
-                      </div>
-                      {isStale && (
-                        <div className="text-xs text-red-500">Needs update</div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => startEdit(stock)}
-                          className="text-blue-600 hover:text-blue-900"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => deleteStock(stock.id!)}
-                          className="text-red-600 hover:text-red-900"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+              {filteredAndSortedStocks.map((stock) => (
+                <StockWatchlistRow
+                  key={stock.id}
+                  stock={stock}
+                  priceUpdateFailed={failedPriceTickers.includes(stock.ticker.toUpperCase())}
+                  onToggleFavorite={toggleFavorite}
+                  onEdit={startEdit}
+                  onDelete={deleteStock}
+                />
+              ))}
             </tbody>
           </table>
         </div>
