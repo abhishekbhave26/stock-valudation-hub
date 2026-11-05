@@ -282,7 +282,8 @@ export default function StockWatchlist() {
               .update({
                 current_price: update.currentPrice,
                 expected_return: update.expectedReturn,
-                cagr: update.cagr
+                cagr: update.cagr,
+                updated_at: new Date().toISOString()
               })
               .eq('id', update.id);
 
