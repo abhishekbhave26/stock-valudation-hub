@@ -3,12 +3,14 @@ interface StockPrice {
   price: number;
   timestamp: number;
   source: string;
+  currency: 'CAD' | 'USD';
 }
 
 interface CachedPrice {
   price: number;
   timestamp: number;
   source: string;
+  currency: 'CAD' | 'USD';
 }
 
 class StockPriceService {
@@ -71,8 +73,23 @@ class StockPriceService {
     return fetch(url);
   }
 
+  // Finnhub uses the `.TO` suffix for Toronto Stock Exchange listings, not
+  // `.CA` (e.g. CSU.CA -> CSU.TO). Map only the symbol sent to the API; the
+  // original ticker stays the cache key and the returned symbol.
+  private toFinnhubSymbol(symbol: string): string {
+    return symbol.endsWith('.CA') ? `${symbol.slice(0, -3)}.TO` : symbol;
+  }
+
+  // TSX-listed tickers trade in Canadian dollars. Prices and DCF inputs for
+  // these stocks are in CAD, so the fetched price is kept in CAD (no FX
+  // conversion) to stay consistent with the DCF math.
+  private getCurrency(symbol: string): 'CAD' | 'USD' {
+    return symbol.endsWith('.CA') ? 'CAD' : 'USD';
+  }
+
   async getStockPrice(symbol: string): Promise<StockPrice | null> {
     const normalizedSymbol = symbol.toUpperCase();
+    const currency = this.getCurrency(normalizedSymbol);
     // Check cache first
     const cached = this.cache.get(normalizedSymbol);
     if (cached && this.isCacheValid(cached)) {
@@ -80,7 +97,8 @@ class StockPriceService {
         symbol: normalizedSymbol,
         price: cached.price,
         timestamp: cached.timestamp,
-        source: cached.source
+        source: cached.source,
+        currency: cached.currency ?? currency
       };
     }
 
@@ -91,8 +109,10 @@ class StockPriceService {
     }
     
     try {
-      // Fetch from Finnhub API
-      const url = `${this.BASE_URL}/quote?symbol=${normalizedSymbol}&token=${this.API_KEY}`;
+      // Fetch from Finnhub API, using the Finnhub symbol (e.g. CSU.TO for
+      // CSU.CA) while keeping the original ticker as the cache key/symbol.
+      const apiSymbol = this.toFinnhubSymbol(normalizedSymbol);
+      const url = `${this.BASE_URL}/quote?symbol=${apiSymbol}&token=${this.API_KEY}`;
       let response: Response | null = null;
       const maxRetries = 3;
       for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
@@ -132,7 +152,8 @@ class StockPriceService {
       const cachedPrice: CachedPrice = {
         price,
         timestamp,
-        source: 'Finnhub'
+        source: 'Finnhub',
+        currency
       };
       
       this.cache.set(normalizedSymbol, cachedPrice);
@@ -142,7 +163,8 @@ class StockPriceService {
         symbol: normalizedSymbol,
         price,
         timestamp,
-        source: 'Finnhub'
+        source: 'Finnhub',
+        currency
       };
       
     } catch (error) {
@@ -155,7 +177,8 @@ class StockPriceService {
           symbol: normalizedSymbol,
           price: cached.price,
           timestamp: cached.timestamp,
-          source: `${cached.source} (cached)`
+          source: `${cached.source} (cached)`,
+          currency: cached.currency ?? currency
         };
       }
       

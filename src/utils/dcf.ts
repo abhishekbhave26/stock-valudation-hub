@@ -80,10 +80,10 @@ export function calculateDCF(inputs: DCFInputs): { results: DCFResults; warnings
   return { results, warnings };
 }
 
-export function formatCurrency(value: number): string {
+export function formatCurrency(value: number, currency: 'USD' | 'CAD' = 'USD'): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency: 'USD',
+    currency,
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value);

@@ -876,6 +876,9 @@ export default function StockWatchlist() {
                 const valuation = getValuationStatus(stock);
                 const isStale = isStockStale(stock);
                 const currentValuation = getCurrentValuation(stock);
+                // TSX-listed tickers (e.g. CSU.CA) trade in Canadian dollars;
+                // their price and DCF inputs are in CAD.
+                const isCad = stock.ticker.toUpperCase().endsWith('.CA');
                 return (
                   <tr key={stock.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -902,7 +905,12 @@ export default function StockWatchlist() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">
-                        {formatCurrency(stock.currentPrice)}
+                        {formatCurrency(stock.currentPrice, isCad ? 'CAD' : 'USD')}
+                        {isCad && (
+                          <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600 align-middle">
+                            CAD
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
