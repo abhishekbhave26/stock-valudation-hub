@@ -11,6 +11,16 @@ interface CachedPrice {
   source: string;
 }
 
+interface GetPriceOptions {
+  /**
+   * Skip the local cache and fetch a live price. Fresh results are still
+   * written to the cache. When a forced fetch fails, no stale cached price
+   * is returned, so the caller can report the failure instead of silently
+   * showing an old price.
+   */
+  forceRefresh?: boolean;
+}
+
 class StockPriceService {
   private cache: Map<string, CachedPrice> = new Map();
   private readonly CACHE_DURATION = 4 * 60 * 60 * 1000; // 4 hours in milliseconds
@@ -71,11 +81,12 @@ class StockPriceService {
     return fetch(url);
   }
 
-  async getStockPrice(symbol: string): Promise<StockPrice | null> {
+  async getStockPrice(symbol: string, options: GetPriceOptions = {}): Promise<StockPrice | null> {
     const normalizedSymbol = symbol.toUpperCase();
-    // Check cache first
+    const { forceRefresh = false } = options;
+    // Check cache first (an explicit refresh skips the cache so it always fetches live prices)
     const cached = this.cache.get(normalizedSymbol);
-    if (cached && this.isCacheValid(cached)) {
+    if (cached && this.isCacheValid(cached) && !forceRefresh) {
       return {
         symbol: normalizedSymbol,
         price: cached.price,
@@ -148,8 +159,10 @@ class StockPriceService {
     } catch (error) {
       console.error(`Failed to fetch price for ${normalizedSymbol}:`, error);
       
-      // If we have expired cache data, return it as fallback
-      if (cached) {
+      // If we have expired cache data, return it as fallback — but not on an
+      // explicit refresh, so a failed live fetch surfaces as a failure
+      // instead of silently serving a stale price.
+      if (cached && !forceRefresh) {
         console.warn(`Using expired cache data for ${normalizedSymbol}`);
         return {
           symbol: normalizedSymbol,
@@ -163,7 +176,7 @@ class StockPriceService {
     }
   }
 
-  async getMultipleStockPrices(symbols: string[]): Promise<Map<string, StockPrice>> {
+  async getMultipleStockPrices(symbols: string[], options: GetPriceOptions = {}): Promise<Map<string, StockPrice>> {
     const results = new Map<string, StockPrice>();
     const uniqueSymbols = [...new Set(symbols.map(s => s.toUpperCase()))];
 
@@ -175,7 +188,7 @@ class StockPriceService {
           return;
         }
         try {
-          const price = await this.getStockPrice(symbol);
+          const price = await this.getStockPrice(symbol, options);
           if (price) {
             results.set(symbol, price);
           }
@@ -207,4 +220,4 @@ class StockPriceService {
 }
 
 export const stockPriceService = new StockPriceService();
-export type { StockPrice };
+export type { StockPrice, GetPriceOptions };
