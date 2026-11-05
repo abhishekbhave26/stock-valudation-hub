@@ -324,7 +324,8 @@ export default function StockWatchlist() {
               .update({
                 current_price: update.currentPrice,
                 expected_return: update.expectedReturn,
-                cagr: update.cagr
+                cagr: update.cagr,
+                updated_at: new Date().toISOString()
               })
               .eq('id', update.id);
 
@@ -1030,21 +1031,35 @@ export default function StockWatchlist() {
                             </span>
                           </>
                         )}
-                        {recentCloses.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => toggleHistoryExpansion(stock.id!)}
-                            className="ml-1 rounded p-0.5 text-gray-400 hover:text-gray-600"
-                            title={isHistoryExpanded ? 'Hide recent closes' : 'Show recent closes'}
-                            aria-label={isHistoryExpanded ? 'Hide recent closes' : 'Show recent closes'}
-                          >
-                            {isHistoryExpanded ? (
-                              <ChevronDown className="w-4 h-4" />
-                            ) : (
-                              <ChevronRight className="w-4 h-4" />
-                            )}
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => toggleHistoryExpansion(stock.id!)}
+                          className={`ml-1 rounded p-0.5 ${
+                            recentCloses.length === 0
+                              ? 'text-gray-300 hover:text-gray-400'
+                              : 'text-gray-400 hover:text-gray-600'
+                          }`}
+                          title={
+                            recentCloses.length === 0
+                              ? 'No recorded closes yet'
+                              : isHistoryExpanded
+                                ? 'Hide recent closes'
+                                : 'Show recent closes'
+                          }
+                          aria-label={
+                            recentCloses.length === 0
+                              ? 'No recorded closes yet'
+                              : isHistoryExpanded
+                                ? 'Hide recent closes'
+                                : 'Show recent closes'
+                          }
+                        >
+                          {isHistoryExpanded ? (
+                            <ChevronDown className="w-4 h-4" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4" />
+                          )}
+                        </button>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -1112,12 +1127,16 @@ export default function StockWatchlist() {
                       <td colSpan={10} className="px-6 py-3">
                         <div className="text-xs text-gray-600">
                           <span className="font-medium text-gray-800">Recent recorded closes: </span>
-                          {recentCloses.map((entry, index) => (
-                            <span key={`${entry.recordedAt}-${index}`}>
-                              {index > 0 && <span className="text-gray-400"> · </span>}
-                              {format(new Date(entry.recordedAt), 'MMM dd, yyyy')}: {formatCurrency(entry.price)}
-                            </span>
-                          ))}
+                          {recentCloses.length === 0 ? (
+                            <span className="text-gray-400">No recorded closes yet</span>
+                          ) : (
+                            recentCloses.map((entry, index) => (
+                              <span key={`${entry.recordedAt}-${index}`}>
+                                {index > 0 && <span className="text-gray-400"> · </span>}
+                                {format(new Date(entry.recordedAt), 'MMM dd, yyyy')}: {formatCurrency(entry.price)}
+                              </span>
+                            ))
+                          )}
                         </div>
                       </td>
                     </tr>
