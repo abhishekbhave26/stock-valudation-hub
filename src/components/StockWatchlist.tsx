@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, Trash2, BarChart3, CreditCard as Edit, RefreshCw, AlertTriangle, Search, Star, Download } from 'lucide-react';
+import { TrendingUp, TrendingDown, Trash2, BarChart3, CreditCard as Edit, RefreshCw, AlertTriangle, Search, Star, Download, ChevronDown, ChevronRight } from 'lucide-react';
 import { SavedStock } from '../types';
 import { supabase } from '../lib/supabase';
 import { formatCurrency, formatPercentage, getPerformanceColor, calculateDCF } from '../utils/dcf';
@@ -25,6 +25,14 @@ export default function StockWatchlist() {
   const [editWarnings, setEditWarnings] = useState<any[]>([]);
   const [updatingPrices, setUpdatingPrices] = useState(false);
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
+  // Recent recorded closes per ticker (uppercase ticker -> newest first).
+  // Populated by a single batched query in loadStocks; used for the
+  // Day Change column and the expandable recent-closes row.
+  const [priceHistory, setPriceHistory] = useState<Record<string, { price: number; recordedAt: string }[]>>({});
+  const [expandedHistory, setExpandedHistory] = useState<Set<string>>(new Set());
+
+  const PRICE_HISTORY_LIMIT = 1000;
+  const RECENT_CLOSES_SHOWN = 5;
 
   const WATCHLIST_LIMIT = 500;
   const valuationMetrics = [
@@ -90,6 +98,38 @@ export default function StockWatchlist() {
         setStocks(enrichedStocks);
       } else {
         setStocks([]);
+      }
+
+      // Fetch recent recorded closes for the user's tickers in one query.
+      // History only starts accumulating once price-history recording ships,
+      // so an empty result here is expected at first. A failure here must
+      // never block the watchlist itself.
+      try {
+        const tickers = [...new Set((data ?? []).map(stock => stock.ticker))];
+        if (tickers.length > 0) {
+          const { data: historyData, error: historyError } = await supabase
+            .from('stock_price_history')
+            .select('ticker, price, recorded_at')
+            .eq('user_email', user.email)
+            .in('ticker', tickers)
+            .order('recorded_at', { ascending: false })
+            .limit(PRICE_HISTORY_LIMIT);
+
+          if (historyError) throw historyError;
+
+          const grouped: Record<string, { price: number; recordedAt: string }[]> = {};
+          (historyData ?? []).forEach(row => {
+            const key = row.ticker.toUpperCase();
+            if (!grouped[key]) grouped[key] = [];
+            grouped[key].push({ price: Number(row.price), recordedAt: row.recorded_at });
+          });
+          setPriceHistory(grouped);
+        } else {
+          setPriceHistory({});
+        }
+      } catch (historyError) {
+        console.error('Error loading price history:', historyError);
+        setPriceHistory({});
       }
     } catch (error) {
       console.error('Error loading stocks:', error);
@@ -243,7 +283,7 @@ export default function StockWatchlist() {
       // Use the optimized batch fetching
       const priceMap = await stockPriceService.getMultipleStockPrices(uniqueSymbols);
       // Prepare batch updates for database
-      const priceUpdates: { id: string; currentPrice: number; expectedReturn?: number; cagr?: number }[] = [];
+      const priceUpdates: { id: string; ticker: string; currentPrice: number; expectedReturn?: number; cagr?: number }[] = [];
       
       stocks.forEach(stock => {
         const normalizedTicker = stock.ticker.toUpperCase();
@@ -263,6 +303,7 @@ export default function StockWatchlist() {
 
           priceUpdates.push({
             id: stock.id!,
+            ticker: stock.ticker.toUpperCase(),
             currentPrice: priceData.price,
             expectedReturn,
             cagr
@@ -272,6 +313,7 @@ export default function StockWatchlist() {
       
       // Batch update database - process in larger chunks to reduce round trips
       const UPDATE_BATCH_SIZE = 100;
+      const successfullyUpdated: { id: string; ticker: string; currentPrice: number }[] = [];
       for (let i = 0; i < priceUpdates.length; i += UPDATE_BATCH_SIZE) {
         const batch = priceUpdates.slice(i, i + UPDATE_BATCH_SIZE);
         
@@ -294,11 +336,39 @@ export default function StockWatchlist() {
           }
         });
 
-        await Promise.allSettled(updatePromises);
+        const batchResults = await Promise.allSettled(updatePromises);
+        batchResults.forEach((result, index) => {
+          if (result.status === 'fulfilled' && result.value.success) {
+            const update = batch[index];
+            successfullyUpdated.push({ id: update.id, ticker: update.ticker, currentPrice: update.currentPrice });
+          }
+        });
 
         // Small delay between database update batches
         if (i + UPDATE_BATCH_SIZE < priceUpdates.length) {
           await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+
+      // Record one price-history row per successfully updated stock so the
+      // Day Change column and recent closes have data going forward.
+      // This must never block the price update itself: failures are logged
+      // and the refresh continues to the reload below.
+      if (successfullyUpdated.length > 0 && user?.email) {
+        try {
+          const { error: historyError } = await supabase
+            .from('stock_price_history')
+            .insert(
+              successfullyUpdated.map(update => ({
+                user_email: user.email,
+                ticker: update.ticker,
+                price: update.currentPrice
+              }))
+            );
+
+          if (historyError) throw historyError;
+        } catch (historyError) {
+          console.error('Failed to record price history:', historyError);
         }
       }
       
@@ -341,6 +411,40 @@ export default function StockWatchlist() {
 
   const toggleNotesExpansion = (stockId: string) => {
     setExpandedNotes(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(stockId)) {
+        newSet.delete(stockId);
+      } else {
+        newSet.add(stockId);
+      }
+      return newSet;
+    });
+  };
+
+  // Most recent recorded close for a ticker from a previous calendar day.
+  // Rows recorded today (e.g. from an earlier "Update Prices" run today)
+  // are skipped so the comparison is always vs the last prior day.
+  const getPriorDayClose = (stock: SavedStock): { price: number; recordedAt: string } | null => {
+    const history = priceHistory[stock.ticker.toUpperCase()] ?? [];
+    const todayKey = format(new Date(), 'yyyy-MM-dd');
+    return history.find(entry => format(new Date(entry.recordedAt), 'yyyy-MM-dd') !== todayKey) ?? null;
+  };
+
+  // Day Change = today's current price vs the most recent prior-day
+  // recorded close. Null when no prior-day price exists yet (history only
+  // starts accumulating after this feature ships).
+  const getDayChange = (stock: SavedStock): number | null => {
+    const priorDay = getPriorDayClose(stock);
+    if (!priorDay || priorDay.price <= 0) return null;
+    return (stock.currentPrice - priorDay.price) / priorDay.price;
+  };
+
+  const getRecentCloses = (stock: SavedStock): { price: number; recordedAt: string }[] => {
+    return (priceHistory[stock.ticker.toUpperCase()] ?? []).slice(0, RECENT_CLOSES_SHOWN);
+  };
+
+  const toggleHistoryExpansion = (stockId: string) => {
+    setExpandedHistory(prev => {
       const newSet = new Set(prev);
       if (newSet.has(stockId)) {
         newSet.delete(stockId);
@@ -862,6 +966,7 @@ export default function StockWatchlist() {
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Price</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Day Change</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Target Prices</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">CAGR</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Valuation</th>
@@ -876,8 +981,12 @@ export default function StockWatchlist() {
                 const valuation = getValuationStatus(stock);
                 const isStale = isStockStale(stock);
                 const currentValuation = getCurrentValuation(stock);
+                const dayChange = getDayChange(stock);
+                const recentCloses = getRecentCloses(stock);
+                const isHistoryExpanded = expandedHistory.has(stock.id!);
                 return (
-                  <tr key={stock.id} className="hover:bg-gray-50">
+                  <React.Fragment key={stock.id}>
+                  <tr className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         <button
@@ -903,6 +1012,39 @@ export default function StockWatchlist() {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">
                         {formatCurrency(stock.currentPrice)}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-1">
+                        {dayChange === null ? (
+                          <span className="text-sm text-gray-400" title="No prior-day price recorded yet — history starts accumulating after the next price update">—</span>
+                        ) : (
+                          <>
+                            {dayChange >= 0 ? (
+                              <TrendingUp className="w-4 h-4 text-green-600" />
+                            ) : (
+                              <TrendingDown className="w-4 h-4 text-red-600" />
+                            )}
+                            <span className={`text-sm font-medium ${dayChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {formatPercentage(dayChange)}
+                            </span>
+                          </>
+                        )}
+                        {recentCloses.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => toggleHistoryExpansion(stock.id!)}
+                            className="ml-1 rounded p-0.5 text-gray-400 hover:text-gray-600"
+                            title={isHistoryExpanded ? 'Hide recent closes' : 'Show recent closes'}
+                            aria-label={isHistoryExpanded ? 'Hide recent closes' : 'Show recent closes'}
+                          >
+                            {isHistoryExpanded ? (
+                              <ChevronDown className="w-4 h-4" />
+                            ) : (
+                              <ChevronRight className="w-4 h-4" />
+                            )}
+                          </button>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -965,6 +1107,22 @@ export default function StockWatchlist() {
                       </div>
                     </td>
                   </tr>
+                  {isHistoryExpanded && (
+                    <tr className="bg-gray-50">
+                      <td colSpan={10} className="px-6 py-3">
+                        <div className="text-xs text-gray-600">
+                          <span className="font-medium text-gray-800">Recent recorded closes: </span>
+                          {recentCloses.map((entry, index) => (
+                            <span key={`${entry.recordedAt}-${index}`}>
+                              {index > 0 && <span className="text-gray-400"> · </span>}
+                              {format(new Date(entry.recordedAt), 'MMM dd, yyyy')}: {formatCurrency(entry.price)}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
                 );
               })}
             </tbody>
