@@ -15,6 +15,9 @@ export interface DCFInputs {
   projectedPrices?: number[];
   notes?: string;
   investorRelationsLink?: string;
+  /** One primary category for the stock (e.g. "Big Tech", "AI Semiconductors").
+   *  Free text with suggestions; stored in the saved row's dcf_inputs JSONB. */
+  category?: string;
 }
 
 export interface DCFResults {
@@ -45,6 +48,9 @@ export interface SavedStock {
   updatedAt: Date;
   notes?: string;
   isFavorite?: boolean;
+  /** One primary category for the stock, read from dcf_inputs.category.
+   *  Empty string when the stock has no category yet. */
+  category?: string;
 }
 
 export interface PortfolioStock {

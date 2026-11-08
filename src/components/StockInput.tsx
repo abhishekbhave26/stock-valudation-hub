@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Search, TrendingUp, RefreshCw } from 'lucide-react';
 import { DCFInputs } from '../types';
+import { STOCK_CATEGORIES } from '../utils/categories';
 import { stockPriceService } from '../services/stockPriceService';
 
 interface StockInputProps {
@@ -16,7 +17,8 @@ export default function StockInput({ onCalculate, loading }: StockInputProps) {
     valuationMultiple: 25,
     baseMetricPerShare: 0,
     desiredReturn: 15,
-    growthRates: [15, 12, 10, 8, 6]
+    growthRates: [15, 12, 10, 8, 6],
+    category: ''
   });
   const [fetchingPrice, setFetchingPrice] = useState(false);
 
@@ -139,6 +141,26 @@ export default function StockInput({ onCalculate, loading }: StockInputProps) {
               step="0.1"
               required
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Category
+            </label>
+            <input
+              type="text"
+              list="stock-category-suggestions"
+              value={formData.category || ''}
+              onChange={(e) => handleInputChange('category', e.target.value)}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="e.g., Big Tech"
+            />
+            <datalist id="stock-category-suggestions">
+              {STOCK_CATEGORIES.map(category => (
+                <option key={category} value={category} />
+              ))}
+            </datalist>
+            <p className="text-xs text-gray-500 mt-1">Pick a suggestion or type your own — one primary category per stock.</p>
           </div>
         </div>
 

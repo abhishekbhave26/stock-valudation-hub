@@ -8,6 +8,7 @@ import { stockPriceService } from '../services/stockPriceService';
 import { useAuth } from '../hooks/useAuth';
 import { format, differenceInDays } from 'date-fns';
 import { downloadCsv } from '../utils/csv';
+import { STOCK_CATEGORIES } from '../utils/categories';
 
 // Pure helpers (module scope so the memoized row and the sorted list can share them
 // without re-creating them on every render).
@@ -123,7 +124,18 @@ const StockWatchlistRow = memo(function StockWatchlistRow({
           >
             <Star className={`w-4 h-4 ${stock.isFavorite ? 'fill-current' : ''}`} />
           </button>
-          <div className="font-medium text-gray-900">{stock.ticker}</div>
+          <div className="flex flex-col">
+            <div className="font-medium text-gray-900">{stock.ticker}</div>
+            {stock.category ? (
+              <span className="inline-flex items-center self-start px-1.5 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600 mt-0.5">
+                {stock.category}
+              </span>
+            ) : (
+              <span className="inline-flex items-center self-start px-1.5 py-0.5 rounded text-[11px] font-medium bg-gray-50 text-gray-400 mt-0.5">
+                Uncategorized
+              </span>
+            )}
+          </div>
           {isStale && (
             <AlertTriangle
               className="w-4 h-4 text-red-500"
@@ -280,11 +292,12 @@ export default function StockWatchlist() {
   const { user } = useAuth();
   const [stocks, setStocks] = useState<SavedStock[]>([]);
   const [loading, setLoading] = useState(false);
-  const [sortBy, setSortBy] = useState<'ticker' | 'expectedReturn' | 'cagr' | 'buyTarget' | 'status' | 'lastUpdated' | 'valuation'>('cagr');
+  const [sortBy, setSortBy] = useState<'ticker' | 'expectedReturn' | 'cagr' | 'buyTarget' | 'status' | 'lastUpdated' | 'valuation' | 'category'>('cagr');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [filterBy, setFilterBy] = useState<
     'all' | 'favorites' | 'undervalued' | 'overvalued' | 'cagr10' | 'cagr15' | 'cagr20'
   >('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [editingStock, setEditingStock] = useState<SavedStock | null>(null);
   const [editForm, setEditForm] = useState<DCFInputs | null>(null);
@@ -357,7 +370,10 @@ export default function StockWatchlist() {
             expectedReturn: totalReturn,
             cagr: cagr,
             buyTarget: stock.buy_target,
-            isFavorite: stock.is_favorite ?? false
+            isFavorite: stock.is_favorite ?? false,
+            // Category lives in the saved row's dcf_inputs JSONB (no schema
+            // change needed); empty when the stock has no category yet.
+            category: stock.dcf_inputs?.category?.trim() || ''
           };
         });
         setStocks(enrichedStocks);
@@ -495,6 +511,13 @@ export default function StockWatchlist() {
     setEditWarnings(warnings);
   };
 
+  // Category is free text (not a number), so it has its own handler.
+  // It rides along in editForm and is saved into dcf_inputs by saveEdit.
+  const handleEditCategoryChange = (value: string) => {
+    if (!editForm) return;
+    setEditForm({ ...editForm, category: value });
+  };
+
   const handleGrowthRateChange = (index: number, value: number) => {
     if (!editForm) return;
     
@@ -529,7 +552,8 @@ export default function StockWatchlist() {
           dcf_inputs: {
             ...editForm,
             projectedPrices: results.projectedPrices,
-            investorRelationsLink: trimmedInvestorRelationsLink
+            investorRelationsLink: trimmedInvestorRelationsLink,
+            category: editForm.category?.trim() || ''
           },
           notes: editForm.notes || '',
           updated_at: new Date().toISOString()
@@ -710,6 +734,7 @@ export default function StockWatchlist() {
       if (!dcfInputs) {
         return {
           Ticker: stock.ticker,
+          Category: stock.category ?? '',
           'Current Price': stock.currentPrice,
           'Desired Return (%)': '',
           'Valuation Metric': '',
@@ -748,6 +773,7 @@ export default function StockWatchlist() {
 
       return {
         Ticker: stock.ticker,
+        Category: stock.category ?? dcfInputs?.category ?? '',
         'Current Price': stock.currentPrice,
         'Desired Return (%)': resolvedInputs.desiredReturn,
         'Valuation Metric': resolvedInputs.valuationMetric,
@@ -787,6 +813,11 @@ export default function StockWatchlist() {
       if (searchTerm && !stock.ticker.toLowerCase().includes(searchTerm.toLowerCase())) {
         return false;
       }
+
+      // Category filter
+      if (categoryFilter !== 'all' && (stock.category || '') !== categoryFilter) {
+        return false;
+      }
       
       // Valuation filter
       if (filterBy === 'favorites') return Boolean(stock.isFavorite);
@@ -821,12 +852,25 @@ export default function StockWatchlist() {
         case 'valuation':
           comparison = (getCurrentValuation(b)?.value ?? 0) - (getCurrentValuation(a)?.value ?? 0);
           break;
+        case 'category':
+          comparison = (a.category ?? '').localeCompare(b.category ?? '');
+          break;
         default:
           comparison = a.ticker.localeCompare(b.ticker);
       }
       
       return sortDirection === 'desc' ? comparison : -comparison;
-    }), [stocks, searchTerm, filterBy, sortBy, sortDirection]);
+    }), [stocks, searchTerm, filterBy, categoryFilter, sortBy, sortDirection]);
+
+  // Categories actually present on the watchlist, for the filter dropdown.
+  // Built from the loaded rows so user-typed categories show up too.
+  const availableCategories = useMemo(() => {
+    const seen = new Set<string>();
+    stocks.forEach(stock => {
+      if (stock.category) seen.add(stock.category);
+    });
+    return [...seen].sort((a, b) => a.localeCompare(b));
+  }, [stocks]);
 
   if (loading) {
     return (
@@ -882,6 +926,26 @@ export default function StockWatchlist() {
                       step="0.1"
                     />
                   </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                  <input
+                    type="text"
+                    list="edit-stock-category-suggestions"
+                    value={editForm.category || ''}
+                    onChange={(e) => handleEditCategoryChange(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                    placeholder="e.g., Big Tech"
+                  />
+                  <datalist id="edit-stock-category-suggestions">
+                    {[...new Set([...STOCK_CATEGORIES, ...stocks.map(s => s.category).filter(Boolean)])]
+                      .sort((a, b) => a.localeCompare(b))
+                      .map(category => (
+                        <option key={category} value={category} />
+                      ))}
+                  </datalist>
+                  <p className="text-xs text-gray-500 mt-1">One primary category per stock — pick a suggestion or type your own.</p>
                 </div>
                 
                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-[2fr_1fr]">
@@ -1154,6 +1218,7 @@ export default function StockWatchlist() {
                   className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 min-w-0"
                 >
                   <option value="ticker">Sort: Ticker</option>
+                  <option value="category">Sort: Category</option>
                   <option value="expectedReturn">Sort: Return</option>
                   <option value="cagr">Sort: CAGR</option>
                   <option value="buyTarget">Sort: Buy Target</option>
@@ -1184,6 +1249,18 @@ export default function StockWatchlist() {
                 <option value="cagr10">CAGR ~ 10%</option>
                 <option value="cagr15">CAGR ≥ 15%</option>
                 <option value="cagr20">CAGR ~ 20%</option>
+              </select>
+
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 min-w-0"
+                title="Filter by category"
+              >
+                <option value="all">All Categories</option>
+                {availableCategories.map(category => (
+                  <option key={category} value={category}>{category}</option>
+                ))}
               </select>
             </div>
           </div>
