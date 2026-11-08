@@ -3,7 +3,7 @@ import { TrendingUp, TrendingDown, Trash2, BarChart3, CreditCard as Edit, Refres
 import { SavedStock } from '../types';
 import { supabase } from '../lib/supabase';
 import { formatCurrency, formatPercentage, getPerformanceColor, calculateDCF, getScenarioResults, normalizeScenarioInputs } from '../utils/dcf';
-import { DCFInputs, DCFScenarioName, DCFScenarioInputs } from '../types';
+import { DCFInputs, DCFScenarioName } from '../types';
 import { stockPriceService } from '../services/stockPriceService';
 import type { StockPrice } from '../services/stockPriceService';
 import { useAuth } from '../hooks/useAuth';
@@ -82,17 +82,6 @@ const isStockStale = (stock: SavedStock) => {
   return daysSinceUpdate > 90;
 };
 
-// A bear/bull case counts as set only when all five growth rates and the
-// multiple are finite numbers — the same rule as the DCF scenarios work
-// (getValidScenario in src/utils/dcf.ts). Anything partial is unset, never
-// completed from the base case.
-const isScenarioSet = (scenario: DCFScenarioInputs | undefined | null): boolean => {
-  if (!scenario) return false;
-  if (!Array.isArray(scenario.growthRates) || scenario.growthRates.length !== 5) return false;
-  if (!scenario.growthRates.every(rate => typeof rate === 'number' && Number.isFinite(rate))) return false;
-  return typeof scenario.valuationMultiple === 'number' && Number.isFinite(scenario.valuationMultiple);
-};
-
 // A category counts as set when it is a non-empty value other than "N/A"
 // (the placeholder used when no category fits a stock yet).
 const isCategorySet = (category: string | undefined | null): boolean => {
@@ -101,19 +90,15 @@ const isCategorySet = (category: string | undefined | null): boolean => {
   return value !== '' && value.toUpperCase() !== 'N/A';
 };
 
-/** Config items still missing for a stock, as short labels: 'Bear case',
- *  'Bull case' and/or 'Category'. Empty array means the stock's config is
- *  complete. The bear/bull fields arrive with the DCF-scenarios work and
- *  the category with the stock-categories work; until those land, every
- *  stock reports all three as missing — which is the correct behaviour
- *  for unset config. Reads `stock.category` (populated by the categories
- *  work's loadStocks mapping) with a fallback to `dcf_inputs.category`,
- *  so this works both before and after that PR merges. */
+/** Config items still missing for a stock, as short labels: currently only
+ *  'Category'. Bear/bull cases are optional scenarios, not required config,
+ *  so an unset bear or bull case never flags the row. Empty array means the
+ *  stock's config is complete. Reads `stock.category` (populated by the
+ *  categories work's loadStocks mapping) with a fallback to
+ *  `dcf_inputs.category`. */
 const getMissingConfig = (stock: SavedStock): string[] => {
   const missing: string[] = [];
   const inputs = stock.dcf_inputs;
-  if (!isScenarioSet(inputs?.bearCase)) missing.push('Bear case');
-  if (!isScenarioSet(inputs?.bullCase)) missing.push('Bull case');
   const category = stock.category ?? inputs?.category;
   if (!isCategorySet(category)) missing.push('Category');
   return missing;
@@ -245,7 +230,7 @@ const StockWatchlistRow = memo(function StockWatchlistRow({
   const missingConfig = getMissingConfig(stock);
   const needsUpdate = isStale || missingConfig.length > 0;
   // Tooltip naming every reason this row is flagged, e.g.
-  // "Last updated Oct 05, 2026 - over 90 days ago — Needs: Bear · Category".
+  // "Last updated Oct 05, 2026 - over 90 days ago — Needs: Category".
   // The missing pieces use the same short form as the visible
   // "Needs: …" line in the Last Updated cell.
   const needsUpdateTitle = [
