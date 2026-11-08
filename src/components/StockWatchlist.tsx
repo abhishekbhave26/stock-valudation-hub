@@ -3,7 +3,7 @@ import { TrendingUp, TrendingDown, Trash2, BarChart3, CreditCard as Edit, Refres
 import { SavedStock } from '../types';
 import { supabase } from '../lib/supabase';
 import { formatCurrency, formatPercentage, getPerformanceColor, calculateDCF } from '../utils/dcf';
-import { DCFInputs } from '../types';
+import { DCFInputs, DCFScenarioInputs } from '../types';
 import { stockPriceService } from '../services/stockPriceService';
 import { useAuth } from '../hooks/useAuth';
 import { format, differenceInDays } from 'date-fns';
@@ -36,6 +36,43 @@ const isStockStale = (stock: SavedStock) => {
   const updatedAt = new Date(stock.updatedAt);
   const daysSinceUpdate = differenceInDays(new Date(), updatedAt);
   return daysSinceUpdate > 90;
+};
+
+// A bear/bull case counts as set only when all five growth rates and the
+// multiple are finite numbers — the same rule as the DCF scenarios work
+// (getValidScenario in src/utils/dcf.ts). Anything partial is unset, never
+// completed from the base case.
+const isScenarioSet = (scenario: DCFScenarioInputs | undefined | null): boolean => {
+  if (!scenario) return false;
+  if (!Array.isArray(scenario.growthRates) || scenario.growthRates.length !== 5) return false;
+  if (!scenario.growthRates.every(rate => typeof rate === 'number' && Number.isFinite(rate))) return false;
+  return typeof scenario.valuationMultiple === 'number' && Number.isFinite(scenario.valuationMultiple);
+};
+
+// A category counts as set when it is a non-empty value other than "N/A"
+// (the placeholder used when no category fits a stock yet).
+const isCategorySet = (category: string | undefined | null): boolean => {
+  if (!category) return false;
+  const value = category.trim();
+  return value !== '' && value.toUpperCase() !== 'N/A';
+};
+
+/** Config items still missing for a stock, as short labels: 'Bear case',
+ *  'Bull case' and/or 'Category'. Empty array means the stock's config is
+ *  complete. The bear/bull fields arrive with the DCF-scenarios work and
+ *  the category with the stock-categories work; until those land, every
+ *  stock reports all three as missing — which is the correct behaviour
+ *  for unset config. Reads `stock.category` (populated by the categories
+ *  work's loadStocks mapping) with a fallback to `dcf_inputs.category`,
+ *  so this works both before and after that PR merges. */
+const getMissingConfig = (stock: SavedStock): string[] => {
+  const missing: string[] = [];
+  const inputs = stock.dcf_inputs;
+  if (!isScenarioSet(inputs?.bearCase)) missing.push('Bear case');
+  if (!isScenarioSet(inputs?.bullCase)) missing.push('Bull case');
+  const category = stock.category ?? inputs?.category;
+  if (!isCategorySet(category)) missing.push('Category');
+  return missing;
 };
 
 // Max recorded closes shown in the expandable history row.
@@ -103,6 +140,14 @@ const StockWatchlistRow = memo(function StockWatchlistRow({
 }: StockWatchlistRowProps) {
   const valuation = getValuationStatus(stock);
   const isStale = isStockStale(stock);
+  const missingConfig = getMissingConfig(stock);
+  const needsUpdate = isStale || missingConfig.length > 0;
+  // Tooltip naming every reason this row is flagged, e.g.
+  // "Last updated Oct 05, 2026 - over 90 days ago — Config needs update: Bear case, Category".
+  const needsUpdateTitle = [
+    isStale ? `Last updated ${format(new Date(stock.updatedAt), 'MMM dd, yyyy')} - over 90 days ago` : null,
+    missingConfig.length > 0 ? `Config needs update: ${missingConfig.join(', ')}` : null,
+  ].filter(Boolean).join(' — ');
   const currentValuation = getCurrentValuation(stock);
   const dayChange = getDayChange(priceHistory, stock);
   const recentCloses = getRecentCloses(priceHistory, stock);
@@ -124,10 +169,10 @@ const StockWatchlistRow = memo(function StockWatchlistRow({
             <Star className={`w-4 h-4 ${stock.isFavorite ? 'fill-current' : ''}`} />
           </button>
           <div className="font-medium text-gray-900">{stock.ticker}</div>
-          {isStale && (
+          {needsUpdate && (
             <AlertTriangle
               className="w-4 h-4 text-red-500"
-              title={`Last updated ${format(new Date(stock.updatedAt), 'MMM dd, yyyy')} - over 90 days ago`}
+              title={needsUpdateTitle}
             />
           )}
           {priceUpdateFailed && (
@@ -229,11 +274,14 @@ const StockWatchlistRow = memo(function StockWatchlistRow({
         </span>
       </td>
       <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
-        <div className={`text-sm ${isStale ? 'text-red-600 font-medium' : 'text-gray-900'}`}>
+        <div className={`text-sm ${needsUpdate ? 'text-red-600 font-medium' : 'text-gray-900'}`}>
           {format(new Date(stock.updatedAt), 'MMM dd, yyyy')}
         </div>
         {isStale && (
           <div className="text-xs text-red-500">Needs update</div>
+        )}
+        {missingConfig.length > 0 && (
+          <div className="text-xs text-red-500">Config needs update: {missingConfig.join(' · ')}</div>
         )}
       </td>
       <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-medium">
