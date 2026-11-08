@@ -21,6 +21,9 @@ export default function StockInput({ onCalculate, loading }: StockInputProps) {
     category: ''
   });
   const [fetchingPrice, setFetchingPrice] = useState(false);
+  // True while the "Create new category…" option is picked in the Category
+  // dropdown, so a free-text input is shown instead.
+  const [showCustomCategory, setShowCustomCategory] = useState(false);
 
   const handleInputChange = (field: keyof DCFInputs, value: any) => {
     setFormData(prev => ({
@@ -147,20 +150,35 @@ export default function StockInput({ onCalculate, loading }: StockInputProps) {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Category
             </label>
-            <input
-              type="text"
-              list="stock-category-suggestions"
-              value={formData.category || ''}
-              onChange={(e) => handleInputChange('category', e.target.value)}
+            <select
+              value={showCustomCategory ? '__new__' : (formData.category || '')}
+              onChange={(e) => {
+                if (e.target.value === '__new__') {
+                  setShowCustomCategory(true);
+                  handleInputChange('category', '');
+                } else {
+                  setShowCustomCategory(false);
+                  handleInputChange('category', e.target.value);
+                }
+              }}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="e.g., Big Tech"
-            />
-            <datalist id="stock-category-suggestions">
+            >
+              <option value="">Select a category</option>
               {STOCK_CATEGORIES.map(category => (
-                <option key={category} value={category} />
+                <option key={category} value={category}>{category}</option>
               ))}
-            </datalist>
-            <p className="text-xs text-gray-500 mt-1">Pick a suggestion or type your own — one primary category per stock.</p>
+              <option value="__new__">Create new category…</option>
+            </select>
+            {showCustomCategory && (
+              <input
+                type="text"
+                value={formData.category || ''}
+                onChange={(e) => handleInputChange('category', e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent mt-2"
+                placeholder="New category name"
+              />
+            )}
+            <p className="text-xs text-gray-500 mt-1">One primary category per stock.</p>
           </div>
         </div>
 

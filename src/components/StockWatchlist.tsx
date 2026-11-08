@@ -132,7 +132,7 @@ const StockWatchlistRow = memo(function StockWatchlistRow({
               </span>
             ) : (
               <span className="inline-flex items-center self-start px-1.5 py-0.5 rounded text-[11px] font-medium bg-gray-50 text-gray-400 mt-0.5">
-                Uncategorized
+                N/A
               </span>
             )}
           </div>
@@ -301,6 +301,9 @@ export default function StockWatchlist() {
   const [searchTerm, setSearchTerm] = useState('');
   const [editingStock, setEditingStock] = useState<SavedStock | null>(null);
   const [editForm, setEditForm] = useState<DCFInputs | null>(null);
+  // True while the "Create new category…" option is picked in the edit
+  // modal's Category dropdown, so a free-text input is shown instead.
+  const [editCustomCategory, setEditCustomCategory] = useState(false);
   const [editResults, setEditResults] = useState<any>(null);
   const [editWarnings, setEditWarnings] = useState<any[]>([]);
   const [updatingPrices, setUpdatingPrices] = useState(false);
@@ -485,6 +488,11 @@ export default function StockWatchlist() {
       investorRelationsLink: stock.dcf_inputs?.investorRelationsLink || ''
     };
     setEditForm(formData);
+    // A category outside the fixed list means it was created custom — keep
+    // the custom input open so it stays editable instead of vanishing.
+    setEditCustomCategory(
+      Boolean(stock.category) && !STOCK_CATEGORIES.includes(stock.category)
+    );
 
     // Calculate initial results
     const { results, warnings } = calculateDCF(formData);
@@ -930,22 +938,35 @@ export default function StockWatchlist() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                  <input
-                    type="text"
-                    list="edit-stock-category-suggestions"
-                    value={editForm.category || ''}
-                    onChange={(e) => handleEditCategoryChange(e.target.value)}
+                  <select
+                    value={editCustomCategory ? '__new__' : (editForm.category || '')}
+                    onChange={(e) => {
+                      if (e.target.value === '__new__') {
+                        setEditCustomCategory(true);
+                        handleEditCategoryChange('');
+                      } else {
+                        setEditCustomCategory(false);
+                        handleEditCategoryChange(e.target.value);
+                      }
+                    }}
                     className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
-                    placeholder="e.g., Big Tech"
-                  />
-                  <datalist id="edit-stock-category-suggestions">
-                    {[...new Set([...STOCK_CATEGORIES, ...stocks.map(s => s.category).filter(Boolean)])]
-                      .sort((a, b) => a.localeCompare(b))
-                      .map(category => (
-                        <option key={category} value={category} />
-                      ))}
-                  </datalist>
-                  <p className="text-xs text-gray-500 mt-1">One primary category per stock — pick a suggestion or type your own.</p>
+                  >
+                    <option value="">Select a category</option>
+                    {STOCK_CATEGORIES.map(category => (
+                      <option key={category} value={category}>{category}</option>
+                    ))}
+                    <option value="__new__">Create new category…</option>
+                  </select>
+                  {editCustomCategory && (
+                    <input
+                      type="text"
+                      value={editForm.category || ''}
+                      onChange={(e) => handleEditCategoryChange(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 mt-2"
+                      placeholder="New category name"
+                    />
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">One primary category per stock.</p>
                 </div>
                 
                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-[2fr_1fr]">

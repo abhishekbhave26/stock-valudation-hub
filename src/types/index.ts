@@ -16,7 +16,8 @@ export interface DCFInputs {
   notes?: string;
   investorRelationsLink?: string;
   /** One primary category for the stock (e.g. "Big Tech", "AI Semiconductors").
-   *  Free text with suggestions; stored in the saved row's dcf_inputs JSONB. */
+   *  Picked from a fixed list in the form, with a "create new category"
+   *  option; stored in the saved row's dcf_inputs JSONB. */
   category?: string;
 }
 

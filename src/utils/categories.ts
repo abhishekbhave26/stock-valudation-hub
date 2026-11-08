@@ -1,8 +1,9 @@
 // Stock categories: one primary category per stock.
 //
-// Categories are free text — the user can type any category in the add/edit
-// form — but these suggestions keep naming consistent across the watchlist.
-// They are also the seed values applied to the existing 67 tickers by the
+// This is the fixed list offered in the add/edit form dropdown, alongside a
+// "Create new category…" option for anything outside it. Keeping the list
+// fixed (rather than free text) keeps naming consistent across the watchlist.
+// These are also the seed values applied to the existing 67 tickers by the
 // 20251107000000_stock_categories migration (stored in dcf_inputs.category).
 export const STOCK_CATEGORIES: string[] = [
   'AI Semiconductors',
