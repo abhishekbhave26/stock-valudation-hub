@@ -245,10 +245,12 @@ const StockWatchlistRow = memo(function StockWatchlistRow({
   const missingConfig = getMissingConfig(stock);
   const needsUpdate = isStale || missingConfig.length > 0;
   // Tooltip naming every reason this row is flagged, e.g.
-  // "Last updated Oct 05, 2026 - over 90 days ago — Needs: Bear case, Category".
+  // "Last updated Oct 05, 2026 - over 90 days ago — Needs: Bear · Category".
+  // The missing pieces use the same short form as the visible
+  // "Needs: …" line in the Last Updated cell.
   const needsUpdateTitle = [
     isStale ? `Last updated ${format(new Date(stock.updatedAt), 'MMM dd, yyyy')} - over 90 days ago` : null,
-    missingConfig.length > 0 ? `Needs: ${missingConfig.join(', ')}` : null,
+    missingConfig.length > 0 ? `Needs: ${missingConfig.map(item => item.replace(' case', '')).join(' · ')}` : null,
   ].filter(Boolean).join(' — ');
   const currentValuation = getCurrentValuation(stock);
   const dayChange = getDayChange(priceHistory, stock);
@@ -1414,38 +1416,33 @@ export default function StockWatchlist() {
                   <p className="text-xs text-gray-500 mt-1">One primary category per stock.</p>
                 </div>
                 
-                {/* Base Case */}
-                <div className="border border-blue-200 bg-blue-50 rounded-lg p-4">
+                {/* Shared Inputs — Common to All Cases */}
+                {/* The valuation metric and its base value are the same for
+                    the base, bear and bull cases, so they sit here once,
+                    above the three case boxes, instead of inside any one
+                    of them. Single stored fields — no data-model change. */}
+                <div className="border border-gray-200 bg-gray-50 rounded-lg p-4">
                   <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-medium text-gray-700">Base Case</label>
+                    <label className="block text-sm font-medium text-gray-700">Common to All Cases</label>
                   </div>
-                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-[3fr_1fr] mb-3">
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_2fr]">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Valuation Multiple</label>
-                        <input
-                          type="number"
-                          value={editForm.valuationMultiple}
-                          onChange={(e) => handleEditFormChange('valuationMultiple', parseFloat(e.target.value))}
-                          className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
-                          step="0.1"
-                        />
-                      </div>
-                      <div className="min-w-0">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Valuation Metric</label>
-                        <select
-                          value={editForm.valuationMetric}
-                          onChange={(e) => handleEditFormChange('valuationMetric', e.target.value)}
-                          title={valuationMetrics.find(metric => metric.value === editForm.valuationMetric)?.fullLabel ?? ''}
-                          className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 text-sm"
-                        >
-                          {valuationMetrics.map(metric => (
-                            <option key={metric.value} value={metric.value}>
-                              {metric.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                  <p className="text-xs text-gray-500 mb-3">
+                    The valuation metric and its base value are the same for the base, bear and bull cases.
+                  </p>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="min-w-0">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Valuation Metric</label>
+                      <select
+                        value={editForm.valuationMetric}
+                        onChange={(e) => handleEditFormChange('valuationMetric', e.target.value)}
+                        title={valuationMetrics.find(metric => metric.value === editForm.valuationMetric)?.fullLabel ?? ''}
+                        className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 text-sm"
+                      >
+                        {valuationMetrics.map(metric => (
+                          <option key={metric.value} value={metric.value}>
+                            {metric.label}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Base Metric Per Share</label>
@@ -1458,7 +1455,26 @@ export default function StockWatchlist() {
                       />
                     </div>
                   </div>
-                
+                </div>
+
+                {/* Base Case */}
+                <div className="border border-blue-200 bg-blue-50 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">Base Case</label>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 mb-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Valuation Multiple</label>
+                      <input
+                        type="number"
+                        value={editForm.valuationMultiple}
+                        onChange={(e) => handleEditFormChange('valuationMultiple', parseFloat(e.target.value))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                        step="0.1"
+                      />
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Growth Rates (%)</label>
                     <div className="grid grid-cols-5 gap-2">
@@ -1661,15 +1677,27 @@ export default function StockWatchlist() {
                   </div>
                 </div>
                 
-                {/* 5-Year Projections Table */}
+                {/* 5-Year Projections Table — projected metric value for
+                    all three cases, each in its scenario color. A case
+                    shows "—" until its growth rates and multiple are
+                    fully entered. Price and Growth are the base case's. */}
+                {(() => {
+                  const bearResults = getScenarioResults(editForm, 'bear');
+                  const bullResults = getScenarioResults(editForm, 'bull');
+                  return (
                 <div>
                   <h5 className="font-medium text-gray-700 mb-2">5-Year Projections</h5>
+                  <p className="text-xs text-gray-500 mb-2">
+                    Projected metric value by scenario — a case shows “—” until its growth rates and multiple are fully entered.
+                  </p>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm border border-gray-200 rounded">
                       <thead className="bg-gray-50">
                         <tr>
                           <th className="px-2 py-1 text-left">Year</th>
-                          <th className="px-2 py-1 text-left">Metric Value</th>
+                          <th className="px-2 py-1 text-left text-red-600">Bear</th>
+                          <th className="px-2 py-1 text-left text-blue-600">Base</th>
+                          <th className="px-2 py-1 text-left text-green-600">Bull</th>
                           <th className="px-2 py-1 text-left">Price</th>
                           <th className="px-2 py-1 text-left">Growth</th>
                         </tr>
@@ -1680,7 +1708,13 @@ export default function StockWatchlist() {
                           return (
                             <tr key={index}>
                               <td className="px-2 py-1">{baseYear + index + 1}</td>
-                              <td className="px-2 py-1 font-medium text-gray-700">${editResults.projectedValues[index].toFixed(2)}</td>
+                              <td className="px-2 py-1 font-medium text-red-600">
+                                {bearResults ? `$${bearResults.projectedValues[index].toFixed(2)}` : '—'}
+                              </td>
+                              <td className="px-2 py-1 font-medium text-blue-600">${editResults.projectedValues[index].toFixed(2)}</td>
+                              <td className="px-2 py-1 font-medium text-green-600">
+                                {bullResults ? `$${bullResults.projectedValues[index].toFixed(2)}` : '—'}
+                              </td>
                               <td className="px-2 py-1 font-medium text-blue-600">{formatCurrency(price)}</td>
                               <td className="px-2 py-1">{editForm.growthRates[index]}%</td>
                             </tr>
@@ -1690,6 +1724,8 @@ export default function StockWatchlist() {
                     </table>
                   </div>
                 </div>
+                  );
+                })()}
                 
                 {/* Scenario Comparison — Bear / Base / Bull targets */}
                 {(() => {
