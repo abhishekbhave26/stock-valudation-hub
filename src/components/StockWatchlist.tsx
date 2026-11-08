@@ -1410,60 +1410,66 @@ export default function StockWatchlist() {
                   <p className="text-xs text-gray-500 mt-1">One primary category per stock.</p>
                 </div>
                 
-                <div className="grid grid-cols-1 gap-4 lg:grid-cols-[2fr_1fr]">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Valuation Multiple</label>
-                      <input
-                        type="number"
-                        value={editForm.valuationMultiple}
-                        onChange={(e) => handleEditFormChange('valuationMultiple', parseFloat(e.target.value))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
-                        step="0.1"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Valuation Metric</label>
-                      <select
-                        value={editForm.valuationMetric}
-                        onChange={(e) => handleEditFormChange('valuationMetric', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
-                      >
-                        {valuationMetrics.map(metric => (
-                          <option key={metric.value} value={metric.value}>
-                            {metric.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                {/* Base Case */}
+                <div className="border border-blue-200 bg-blue-50 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">Base Case</label>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Base Metric Per Share</label>
-                    <input
-                      type="number"
-                      value={editForm.baseMetricPerShare}
-                      onChange={(e) => handleEditFormChange('baseMetricPerShare', parseFloat(e.target.value))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
-                      step="0.01"
-                    />
-                  </div>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Growth Rates (%)</label>
-                  <div className="grid grid-cols-5 gap-2">
-                    {editForm.growthRates.map((rate, index) => (
-                      <div key={index}>
-                        <label className="block text-xs text-gray-500 mb-1 text-center">Y{index + 1}</label>
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-[2fr_1fr] mb-3">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Valuation Multiple</label>
                         <input
                           type="number"
-                          value={rate}
-                          onChange={(e) => handleGrowthRateChange(index, parseFloat(e.target.value))}
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-center text-sm focus:ring-2 focus:ring-blue-500"
+                          value={editForm.valuationMultiple}
+                          onChange={(e) => handleEditFormChange('valuationMultiple', parseFloat(e.target.value))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
                           step="0.1"
                         />
                       </div>
-                    ))}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Valuation Metric</label>
+                        <select
+                          value={editForm.valuationMetric}
+                          onChange={(e) => handleEditFormChange('valuationMetric', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                        >
+                          {valuationMetrics.map(metric => (
+                            <option key={metric.value} value={metric.value}>
+                              {metric.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Base Metric Per Share</label>
+                      <input
+                        type="number"
+                        value={editForm.baseMetricPerShare}
+                        onChange={(e) => handleEditFormChange('baseMetricPerShare', parseFloat(e.target.value))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                        step="0.01"
+                      />
+                    </div>
+                  </div>
+                
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Growth Rates (%)</label>
+                    <div className="grid grid-cols-5 gap-2">
+                      {editForm.growthRates.map((rate, index) => (
+                        <div key={index}>
+                          <label className="block text-xs text-gray-500 mb-1 text-center">Y{index + 1}</label>
+                          <input
+                            type="number"
+                            value={rate}
+                            onChange={(e) => handleGrowthRateChange(index, parseFloat(e.target.value))}
+                            className="w-full px-2 py-1 border border-gray-300 rounded text-center text-sm focus:ring-2 focus:ring-blue-500"
+                            step="0.1"
+                          />
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
                 
