@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
-import { TrendingUp, TrendingDown, Trash2, BarChart3, CreditCard as Edit, RefreshCw, AlertTriangle, Search, Star, Download, ChevronDown, ChevronRight, X, Loader2, CheckCircle2, Tags } from 'lucide-react';
+import { TrendingUp, TrendingDown, Trash2, BarChart3, CreditCard as Edit, RefreshCw, AlertTriangle, Search, Star, Download, ChevronDown, ChevronRight, X, Loader2, CheckCircle2, Tags, ArrowUp, ArrowDown } from 'lucide-react';
 import { SavedStock } from '../types';
 import { supabase } from '../lib/supabase';
 import { formatCurrency, formatPercentage, getPerformanceColor, calculateDCF, getScenarioResults, normalizeScenarioInputs } from '../utils/dcf';
@@ -1852,92 +1852,64 @@ export default function StockWatchlist() {
       )}
 
       {/* Controls */}
-      <div className="bg-white rounded-xl shadow-lg p-6">
+      <div className="bg-white rounded-xl shadow-lg p-4 sm:p-5">
         <div className="flex flex-col gap-4">
           <div>
             <h2 className="text-xl font-semibold text-gray-800 mb-1">Stock Watchlist</h2>
             <p className="text-sm text-gray-500">{stocks.length}/{WATCHLIST_LIMIT} stocks tracked</p>
           </div>
-          
-          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-            {/* First row on mobile: Update button and search */}
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 flex-1">
-              <button
-                onClick={updateAllCurrentPrices}
-                disabled={updatingPrices || priceQueueActive || stocks.length === 0}
-                className="flex items-center justify-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-                title={priceQueueActive ? 'Background price update still running — the remaining tickers will fill in automatically' : 'Update all current prices'}
-              >
-                <RefreshCw className={`w-4 h-4 ${updatingPrices || priceQueueActive ? 'animate-spin' : ''}`} />
-                {updatingPrices ? 'Updating...' : priceQueueActive ? `Updating ${pendingPriceTickers.length} remaining…` : 'Update Prices'}
-              </button>
 
-              <button
-                onClick={exportWatchlistCsv}
-                disabled={stocks.length === 0}
-                className="flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-                title="Export watchlist to CSV"
-              >
-                <Download className="w-4 h-4" />
-                Export CSV
-              </button>
-              
-              <div className="relative flex-1 sm:max-w-xs">
+          {/* Row 1: Actions + Search */}
+          <div className="flex flex-col sm:flex-row sm:items-end gap-4">
+            {/* Actions — Update Prices is the one primary button */}
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Actions</span>
+              <div className="flex gap-2">
+                <button
+                  onClick={updateAllCurrentPrices}
+                  disabled={updatingPrices || priceQueueActive || stocks.length === 0}
+                  className="flex items-center justify-center gap-2 bg-green-600 text-white px-4 h-10 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                  title={priceQueueActive ? 'Background price update still running — the remaining tickers will fill in automatically' : 'Update all current prices'}
+                >
+                  <RefreshCw className={`w-4 h-4 ${updatingPrices || priceQueueActive ? 'animate-spin' : ''}`} />
+                  {updatingPrices ? 'Updating...' : priceQueueActive ? `Updating ${pendingPriceTickers.length} remaining…` : 'Update Prices'}
+                </button>
+
+                <button
+                  onClick={exportWatchlistCsv}
+                  disabled={stocks.length === 0}
+                  className="flex items-center justify-center gap-2 border border-gray-300 bg-white text-gray-700 px-4 h-10 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                  title="Export watchlist to CSV"
+                >
+                  <Download className="w-4 h-4" />
+                  Export CSV
+                </button>
+              </div>
+            </div>
+
+            {/* Search */}
+            <div className="flex flex-col gap-1 flex-1 sm:max-w-xs">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Search</span>
+              <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
                   placeholder="Search stocks..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
+                  className="pl-10 pr-4 h-10 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full"
                 />
               </div>
             </div>
-            
-            {/* Second row on mobile: Sort and filter controls */}
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-              <div className="grid grid-cols-2 sm:flex gap-2 sm:gap-3">
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 min-w-0"
-                >
-                  <option value="ticker">Sort: Ticker</option>
-                  <option value="category">Sort: Category</option>
-                  <option value="region">Sort: Region</option>
-                  <option value="expectedReturn">Sort: Return</option>
-                  <option value="cagr">Sort: CAGR</option>
-                  <option value="buyTarget">Sort: Buy Target</option>
-                  <option value="status">Sort: Status</option>
-                  <option value="lastUpdated">Sort: Updated</option>
-                  <option value="valuation">Sort: Valuation</option>
-                </select>
-                
-                <select
-                  value={sortDirection}
-                  onChange={(e) => setSortDirection(e.target.value as 'asc' | 'desc')}
-                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 min-w-0"
-                >
-                  <option value="desc">↓ Desc</option>
-                  <option value="asc">↑ Asc</option>
-                </select>
-              </div>
-              
-              <select
-                value={filterBy}
-                onChange={(e) => setFilterBy(e.target.value as typeof filterBy)}
-                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 min-w-0"
-              >
-                <option value="all">All Stocks</option>
-                <option value="favorites">Favorites</option>
-                <option value="undervalued">Undervalued</option>
-                <option value="overvalued">Overvalued</option>
-                <option value="cagr10">CAGR ~ 10%</option>
-                <option value="cagr15">CAGR ≥ 15%</option>
-                <option value="cagr20">CAGR ~ 20%</option>
-              </select>
+          </div>
 
-              {/* DCF case toggle: which case's targets/valuation the table shows */}
+          <div className="border-t border-gray-100" />
+
+          {/* Row 2: View + Sort & filter */}
+          <div className="flex flex-col sm:flex-row sm:items-end gap-4">
+            {/* View — DCF case toggle: which case's targets/valuation the table shows */}
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">View</span>
               <div
                 className="inline-flex rounded-lg border border-gray-300 overflow-hidden"
                 role="group"
@@ -1950,7 +1922,7 @@ export default function StockWatchlist() {
                     type="button"
                     onClick={() => handleDisplayScenarioChange(scenario)}
                     aria-pressed={displayScenario === scenario}
-                    className={`px-3 py-2 text-sm font-medium capitalize transition-colors ${
+                    className={`px-3 h-10 text-sm font-medium capitalize transition-colors ${
                       displayScenario === scenario
                         ? scenario === 'bear'
                           ? 'bg-red-600 text-white'
@@ -1964,40 +1936,89 @@ export default function StockWatchlist() {
                   </button>
                 ))}
               </div>
+            </div>
 
-              <select
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 min-w-0"
-                title="Filter by category"
-              >
-                <option value="all">All Categories</option>
-                {availableCategories.map(category => (
-                  <option key={category} value={category}>{category}</option>
-                ))}
-              </select>
+            {/* Sort & filter */}
+            <div className="flex flex-col gap-1 min-w-0 flex-1">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Sort &amp; filter</span>
+              <div className="flex flex-wrap gap-2">
+                {/* Sort field + direction as one joined control */}
+                <div className="flex rounded-lg border border-gray-300 overflow-hidden focus-within:ring-2 focus-within:ring-blue-500">
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                    aria-label="Sort by"
+                    className="px-3 h-10 border-0 text-sm focus:outline-none min-w-0 bg-white"
+                  >
+                    <option value="ticker">Sort: Ticker</option>
+                    <option value="category">Sort: Category</option>
+                    <option value="region">Sort: Region</option>
+                    <option value="expectedReturn">Sort: Return</option>
+                    <option value="cagr">Sort: CAGR</option>
+                    <option value="buyTarget">Sort: Buy Target</option>
+                    <option value="status">Sort: Status</option>
+                    <option value="lastUpdated">Sort: Updated</option>
+                    <option value="valuation">Sort: Valuation</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setSortDirection(sortDirection === 'desc' ? 'asc' : 'desc')}
+                    aria-label={sortDirection === 'desc' ? 'Sort descending — switch to ascending' : 'Sort ascending — switch to descending'}
+                    title={sortDirection === 'desc' ? 'Descending — click for ascending' : 'Ascending — click for descending'}
+                    className="flex items-center justify-center w-10 h-10 border-l border-gray-300 bg-gray-50 text-gray-600 hover:bg-gray-100 transition-colors shrink-0"
+                  >
+                    {sortDirection === 'desc' ? <ArrowDown className="w-4 h-4" /> : <ArrowUp className="w-4 h-4" />}
+                  </button>
+                </div>
 
-              <select
-                value={regionFilter}
-                onChange={(e) => setRegionFilter(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 min-w-0"
-                title="Filter by region"
-              >
-                <option value="all">All Regions</option>
-                {availableRegions.map(region => (
-                  <option key={region} value={region}>{region}</option>
-                ))}
-              </select>
+                <select
+                  value={filterBy}
+                  onChange={(e) => setFilterBy(e.target.value as typeof filterBy)}
+                  className="px-3 h-10 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 min-w-0 bg-white"
+                >
+                  <option value="all">All Stocks</option>
+                  <option value="favorites">Favorites</option>
+                  <option value="undervalued">Undervalued</option>
+                  <option value="overvalued">Overvalued</option>
+                  <option value="cagr10">CAGR ~ 10%</option>
+                  <option value="cagr15">CAGR ≥ 15%</option>
+                  <option value="cagr20">CAGR ~ 20%</option>
+                </select>
 
-              <button
-                type="button"
-                onClick={() => setShowManager(true)}
-                className="flex items-center justify-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 whitespace-nowrap"
-                title="Add, rename, merge or remove categories and regions"
-              >
-                <Tags className="w-4 h-4" />
-                Manage categories &amp; regions
-              </button>
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className="px-3 h-10 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 min-w-0 bg-white"
+                  title="Filter by category"
+                >
+                  <option value="all">All Categories</option>
+                  {availableCategories.map(category => (
+                    <option key={category} value={category}>{category}</option>
+                  ))}
+                </select>
+
+                <select
+                  value={regionFilter}
+                  onChange={(e) => setRegionFilter(e.target.value)}
+                  className="px-3 h-10 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 min-w-0 bg-white"
+                  title="Filter by region"
+                >
+                  <option value="all">All Regions</option>
+                  {availableRegions.map(region => (
+                    <option key={region} value={region}>{region}</option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  onClick={() => setShowManager(true)}
+                  className="flex items-center justify-center gap-2 px-3 h-10 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 whitespace-nowrap"
+                  title="Add, rename, merge or remove categories and regions"
+                >
+                  <Tags className="w-4 h-4" />
+                  Manage categories &amp; regions
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -224,7 +224,7 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-slate-800">
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-800 overflow-x-hidden">
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-200 dark:bg-slate-800 dark:border-slate-600">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -292,7 +292,7 @@ function App() {
       {/* Navigation Tabs */}
       <nav className="bg-white border-b border-gray-200 dark:bg-slate-800 dark:border-slate-600">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex space-x-2 sm:space-x-4 lg:space-x-8 overflow-x-auto scrollbar-hide">
+          <div className="flex space-x-2 sm:space-x-4 overflow-x-auto scrollbar-hide">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               return (
