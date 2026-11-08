@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Calculator, Wallet, BarChart3, Eye, LogOut, User, Lock, MessageSquare } from 'lucide-react';
+import { Calculator, Wallet, BarChart3, Eye, LogOut, User, Lock, MessageSquare, FlaskConical } from 'lucide-react';
 import DCFCalculator from './components/DCFCalculator';
 import PortfolioTracker from './components/PortfolioTracker';
 import PortfolioAnalytics from './components/PortfolioAnalytics';
 import StockWatchlist from './components/StockWatchlist';
+import ScenarioSimulation from './components/ScenarioSimulation';
 import AboutUs from './components/AboutUs';
 import ContactUs from './components/ContactUs';
 import AuthForm from './components/AuthForm';
@@ -13,7 +14,7 @@ import { supabase, isSupabaseConfigured } from './lib/supabase';
 
 function App() {
   const { user, loading: authLoading, error: authError, signIn, signUp, signOut, resetPassword, updatePassword } = useAuth();
-  const [activeTab, setActiveTab] = useState<'watchlist' | 'dcf' | 'portfolio' | 'analytics' | 'about' | 'contact'>('watchlist');
+  const [activeTab, setActiveTab] = useState<'watchlist' | 'dcf' | 'portfolio' | 'analytics' | 'simulation' | 'about' | 'contact'>('watchlist');
   const [authFormLoading, setAuthFormLoading] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -89,6 +90,7 @@ function App() {
     { id: 'dcf', label: 'DCF Valuation', icon: Calculator },
     { id: 'portfolio', label: 'Portfolio Tracker', icon: Wallet },
     { id: 'analytics', label: 'Portfolio Analytics', icon: BarChart3 },
+    { id: 'simulation', label: 'Scenario Simulation', icon: FlaskConical },
     { id: 'about', label: 'About Us', icon: User },
     { id: 'contact', label: 'Contact', icon: MessageSquare }
   ];
@@ -310,6 +312,7 @@ function App() {
                      tab.id === 'dcf' ? 'DCF' : 
                      tab.id === 'portfolio' ? 'Portfolio' : 
                      tab.id === 'analytics' ? 'Analytics' :
+                     tab.id === 'simulation' ? 'Simulate' :
                      tab.id === 'about' ? 'About' : 'Contact'}
                   </span>
                 </button>
@@ -325,6 +328,7 @@ function App() {
         {activeTab === 'dcf' && <DCFCalculator onSaveStock={handleSaveStock} />}
         {activeTab === 'portfolio' && <PortfolioTracker isDarkMode={isDarkMode} />}
         {activeTab === 'analytics' && <PortfolioAnalytics isDarkMode={isDarkMode} />}
+        {activeTab === 'simulation' && <ScenarioSimulation />}
         {activeTab === 'about' && <AboutUs />}
         {activeTab === 'contact' && <ContactUs />}
       </main>

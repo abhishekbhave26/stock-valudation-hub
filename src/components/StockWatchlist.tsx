@@ -2,24 +2,58 @@ import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from '
 import { TrendingUp, TrendingDown, Trash2, BarChart3, CreditCard as Edit, RefreshCw, AlertTriangle, Search, Star, Download, ChevronDown, ChevronRight, X, Loader2, CheckCircle2 } from 'lucide-react';
 import { SavedStock } from '../types';
 import { supabase } from '../lib/supabase';
-import { formatCurrency, formatPercentage, getPerformanceColor, calculateDCF } from '../utils/dcf';
-import { DCFInputs } from '../types';
+import { formatCurrency, formatPercentage, getPerformanceColor, calculateDCF, getScenarioResults, normalizeScenarioInputs } from '../utils/dcf';
+import { DCFInputs, DCFScenarioName, DCFScenarioInputs } from '../types';
 import { stockPriceService } from '../services/stockPriceService';
 import type { StockPrice } from '../services/stockPriceService';
 import { useAuth } from '../hooks/useAuth';
 import { format, differenceInDays } from 'date-fns';
 import { downloadCsv } from '../utils/csv';
+import { STOCK_CATEGORIES } from '../utils/categories';
 
 // Pure helpers (module scope so the memoized row and the sorted list can share them
 // without re-creating them on every render).
-const getValuationStatus = (stock: SavedStock) => {
-  const currentPrice = stock.currentPrice;
-  const fairValue = stock.fairValue;
-
+const getValuationStatusForFairValue = (currentPrice: number, fairValue: number) => {
   if (currentPrice <= fairValue * 0.8) return { status: 'strong-buy', color: 'bg-green-600', text: 'Strong Buy' };
   if (currentPrice <= fairValue) return { status: 'buy', color: 'bg-green-500', text: 'Buy' };
   if (currentPrice <= fairValue * 1.2) return { status: 'hold', color: 'bg-yellow-500', text: 'Hold' };
   return { status: 'overvalued', color: 'bg-red-600', text: 'Overvalued' };
+};
+
+// The valuation numbers the watchlist shows for one scenario. Base always
+// uses the stored fields (unchanged behavior); bear/bull are computed on the
+// fly from dcf_inputs and are `isSet: false` (all values null) until the case
+// is fully entered — an unset case shows dashes, never invented numbers.
+const getDisplayValuation = (stock: SavedStock, scenario: DCFScenarioName) => {
+  if (scenario === 'base') {
+    return {
+      isSet: true,
+      fairValue: stock.fairValue,
+      cagr: stock.cagr,
+      buyTarget: stock.buyTarget,
+      expectedReturn: stock.expectedReturn,
+      projectedPrices: stock.dcf_inputs?.projectedPrices ?? null as number[] | null
+    };
+  }
+  const results = stock.dcf_inputs ? getScenarioResults(stock.dcf_inputs, scenario) : null;
+  if (!results) {
+    return {
+      isSet: false,
+      fairValue: null as number | null,
+      cagr: null as number | null,
+      buyTarget: null as number | null,
+      expectedReturn: null as number | null,
+      projectedPrices: null as number[] | null
+    };
+  }
+  return {
+    isSet: true,
+    fairValue: results.fairValue,
+    cagr: results.cagr,
+    buyTarget: results.buyTargetPrice,
+    expectedReturn: results.totalReturn,
+    projectedPrices: results.projectedPrices
+  };
 };
 
 const getCurrentValuation = (stock: SavedStock) => {
@@ -37,6 +71,43 @@ const isStockStale = (stock: SavedStock) => {
   const updatedAt = new Date(stock.updatedAt);
   const daysSinceUpdate = differenceInDays(new Date(), updatedAt);
   return daysSinceUpdate > 90;
+};
+
+// A bear/bull case counts as set only when all five growth rates and the
+// multiple are finite numbers — the same rule as the DCF scenarios work
+// (getValidScenario in src/utils/dcf.ts). Anything partial is unset, never
+// completed from the base case.
+const isScenarioSet = (scenario: DCFScenarioInputs | undefined | null): boolean => {
+  if (!scenario) return false;
+  if (!Array.isArray(scenario.growthRates) || scenario.growthRates.length !== 5) return false;
+  if (!scenario.growthRates.every(rate => typeof rate === 'number' && Number.isFinite(rate))) return false;
+  return typeof scenario.valuationMultiple === 'number' && Number.isFinite(scenario.valuationMultiple);
+};
+
+// A category counts as set when it is a non-empty value other than "N/A"
+// (the placeholder used when no category fits a stock yet).
+const isCategorySet = (category: string | undefined | null): boolean => {
+  if (!category) return false;
+  const value = category.trim();
+  return value !== '' && value.toUpperCase() !== 'N/A';
+};
+
+/** Config items still missing for a stock, as short labels: 'Bear case',
+ *  'Bull case' and/or 'Category'. Empty array means the stock's config is
+ *  complete. The bear/bull fields arrive with the DCF-scenarios work and
+ *  the category with the stock-categories work; until those land, every
+ *  stock reports all three as missing — which is the correct behaviour
+ *  for unset config. Reads `stock.category` (populated by the categories
+ *  work's loadStocks mapping) with a fallback to `dcf_inputs.category`,
+ *  so this works both before and after that PR merges. */
+const getMissingConfig = (stock: SavedStock): string[] => {
+  const missing: string[] = [];
+  const inputs = stock.dcf_inputs;
+  if (!isScenarioSet(inputs?.bearCase)) missing.push('Bear case');
+  if (!isScenarioSet(inputs?.bullCase)) missing.push('Bull case');
+  const category = stock.category ?? inputs?.category;
+  if (!isCategorySet(category)) missing.push('Category');
+  return missing;
 };
 
 // Max recorded closes shown in the expandable history row.
@@ -123,6 +194,8 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 interface StockWatchlistRowProps {
   stock: SavedStock;
+  /** Which DCF case's targets/valuation this row displays (base by default). */
+  displayScenario: DCFScenarioName;
   /** True when the latest price update failed for this ticker (last known price shown). */
   priceUpdateFailed: boolean;
   /** True while this ticker is queued for a background retry after a rate
@@ -145,6 +218,7 @@ interface StockWatchlistRowProps {
 // priceHistory reference, so they don't create new prop identities per render.
 const StockWatchlistRow = memo(function StockWatchlistRow({
   stock,
+  displayScenario,
   priceUpdateFailed,
   priceUpdatePending,
   priceHistory,
@@ -154,8 +228,19 @@ const StockWatchlistRow = memo(function StockWatchlistRow({
   onEdit,
   onDelete
 }: StockWatchlistRowProps) {
-  const valuation = getValuationStatus(stock);
+  const display = getDisplayValuation(stock, displayScenario);
+  const valuation = display.isSet && display.fairValue !== null
+    ? getValuationStatusForFairValue(stock.currentPrice, display.fairValue)
+    : null;
   const isStale = isStockStale(stock);
+  const missingConfig = getMissingConfig(stock);
+  const needsUpdate = isStale || missingConfig.length > 0;
+  // Tooltip naming every reason this row is flagged, e.g.
+  // "Last updated Oct 05, 2026 - over 90 days ago — Config needs update: Bear case, Category".
+  const needsUpdateTitle = [
+    isStale ? `Last updated ${format(new Date(stock.updatedAt), 'MMM dd, yyyy')} - over 90 days ago` : null,
+    missingConfig.length > 0 ? `Config needs update: ${missingConfig.join(', ')}` : null,
+  ].filter(Boolean).join(' — ');
   const currentValuation = getCurrentValuation(stock);
   const dayChange = getDayChange(priceHistory, stock);
   const recentCloses = getRecentCloses(priceHistory, stock);
@@ -176,11 +261,22 @@ const StockWatchlistRow = memo(function StockWatchlistRow({
           >
             <Star className={`w-4 h-4 ${stock.isFavorite ? 'fill-current' : ''}`} />
           </button>
-          <div className="font-medium text-gray-900">{stock.ticker}</div>
-          {isStale && (
+          <div className="flex flex-col">
+            <div className="font-medium text-gray-900">{stock.ticker}</div>
+            {stock.category ? (
+              <span className="inline-flex items-center self-start px-1.5 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600 mt-0.5">
+                {stock.category}
+              </span>
+            ) : (
+              <span className="inline-flex items-center self-start px-1.5 py-0.5 rounded text-[11px] font-medium bg-gray-50 text-gray-400 mt-0.5">
+                N/A
+              </span>
+            )}
+          </div>
+          {needsUpdate && (
             <AlertTriangle
               className="w-4 h-4 text-red-500"
-              title={`Last updated ${format(new Date(stock.updatedAt), 'MMM dd, yyyy')} - over 90 days ago`}
+              title={needsUpdateTitle}
             />
           )}
           {priceUpdateFailed && (
@@ -257,19 +353,25 @@ const StockWatchlistRow = memo(function StockWatchlistRow({
       </td>
       <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
         <div className="text-xs space-y-1">
-          {stock.dcf_inputs && stock.dcf_inputs.projectedPrices && (
+          {display.projectedPrices ? (
             <>
-              <div>1Y: {formatCurrency(stock.dcf_inputs.projectedPrices[0] || 0)}</div>
-              <div>3Y: {formatCurrency(stock.dcf_inputs.projectedPrices[2] || 0)}</div>
-              <div>5Y: {formatCurrency(stock.dcf_inputs.projectedPrices[4] || 0)}</div>
+              <div>1Y: {formatCurrency(display.projectedPrices[0] || 0)}</div>
+              <div>3Y: {formatCurrency(display.projectedPrices[2] || 0)}</div>
+              <div>5Y: {formatCurrency(display.projectedPrices[4] || 0)}</div>
             </>
+          ) : (
+            <span className="text-gray-400" title={`${displayScenario === 'bear' ? 'Bear' : 'Bull'} case not entered yet`}>—</span>
           )}
         </div>
       </td>
       <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
-        <div className={`text-sm font-medium ${getPerformanceColor(stock.cagr, 'cagr')}`}>
-          {formatPercentage(stock.cagr)}
-        </div>
+        {display.cagr !== null ? (
+          <div className={`text-sm font-medium ${getPerformanceColor(display.cagr, 'cagr')}`}>
+            {formatPercentage(display.cagr)}
+          </div>
+        ) : (
+          <span className="text-sm text-gray-400">—</span>
+        )}
       </td>
       <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
         {currentValuation ? (
@@ -281,21 +383,32 @@ const StockWatchlistRow = memo(function StockWatchlistRow({
         )}
       </td>
       <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
-        <div className="text-sm font-medium text-blue-600">
-          {formatCurrency(stock.buyTarget)}
-        </div>
+        {display.buyTarget !== null ? (
+          <div className="text-sm font-medium text-blue-600">
+            {formatCurrency(display.buyTarget)}
+          </div>
+        ) : (
+          <span className="text-sm text-gray-400">—</span>
+        )}
       </td>
       <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
-        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-white ${valuation.color}`}>
-          {valuation.text}
-        </span>
+        {valuation ? (
+          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-white ${valuation.color}`}>
+            {valuation.text}
+          </span>
+        ) : (
+          <span className="text-sm text-gray-400" title={`${displayScenario === 'bear' ? 'Bear' : 'Bull'} case not entered yet`}>—</span>
+        )}
       </td>
       <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
-        <div className={`text-sm ${isStale ? 'text-red-600 font-medium' : 'text-gray-900'}`}>
+        <div className={`text-sm ${needsUpdate ? 'text-red-600 font-medium' : 'text-gray-900'}`}>
           {format(new Date(stock.updatedAt), 'MMM dd, yyyy')}
         </div>
         {isStale && (
           <div className="text-xs text-red-500">Needs update</div>
+        )}
+        {missingConfig.length > 0 && (
+          <div className="text-xs text-red-500">Config needs update: {missingConfig.join(' · ')}</div>
         )}
       </td>
       <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -342,14 +455,29 @@ export default function StockWatchlist() {
   const { user } = useAuth();
   const [stocks, setStocks] = useState<SavedStock[]>([]);
   const [loading, setLoading] = useState(false);
-  const [sortBy, setSortBy] = useState<'ticker' | 'expectedReturn' | 'cagr' | 'buyTarget' | 'status' | 'lastUpdated' | 'valuation'>('cagr');
+  const [sortBy, setSortBy] = useState<'ticker' | 'expectedReturn' | 'cagr' | 'buyTarget' | 'status' | 'lastUpdated' | 'valuation' | 'category'>('cagr');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  // Which DCF case the watchlist displays (base by default). Persisted so
+  // the toggle survives reloads; base-case storage is untouched.
+  const [displayScenario, setDisplayScenario] = useState<DCFScenarioName>(() => {
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('watchlistScenario') : null;
+    return saved === 'bear' || saved === 'bull' ? saved : 'base';
+  });
+
+  const handleDisplayScenarioChange = (scenario: DCFScenarioName) => {
+    setDisplayScenario(scenario);
+    localStorage.setItem('watchlistScenario', scenario);
+  };
   const [filterBy, setFilterBy] = useState<
     'all' | 'favorites' | 'undervalued' | 'overvalued' | 'cagr10' | 'cagr15' | 'cagr20'
   >('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [editingStock, setEditingStock] = useState<SavedStock | null>(null);
   const [editForm, setEditForm] = useState<DCFInputs | null>(null);
+  // True while the "Create new category…" option is picked in the edit
+  // modal's Category dropdown, so a free-text input is shown instead.
+  const [editCustomCategory, setEditCustomCategory] = useState(false);
   const [editResults, setEditResults] = useState<any>(null);
   const [editWarnings, setEditWarnings] = useState<any[]>([]);
   const [updatingPrices, setUpdatingPrices] = useState(false);
@@ -434,7 +562,10 @@ export default function StockWatchlist() {
             expectedReturn: totalReturn,
             cagr: cagr,
             buyTarget: stock.buy_target,
-            isFavorite: stock.is_favorite ?? false
+            isFavorite: stock.is_favorite ?? false,
+            // Category lives in the saved row's dcf_inputs JSONB (no schema
+            // change needed); empty when the stock has no category yet.
+            category: stock.dcf_inputs?.category?.trim() || ''
           };
         });
         setStocks(enrichedStocks);
@@ -554,6 +685,11 @@ export default function StockWatchlist() {
       investorRelationsLink: stock.dcf_inputs?.investorRelationsLink || ''
     };
     setEditForm(formData);
+    // A category outside the fixed list means it was created custom — keep
+    // the custom input open so it stays editable instead of vanishing.
+    setEditCustomCategory(
+      Boolean(stock.category) && !STOCK_CATEGORIES.includes(stock.category)
+    );
 
     // Calculate initial results
     const { results, warnings } = calculateDCF(formData);
@@ -580,6 +716,13 @@ export default function StockWatchlist() {
     setEditWarnings(warnings);
   };
 
+  // Category is free text (not a number), so it has its own handler.
+  // It rides along in editForm and is saved into dcf_inputs by saveEdit.
+  const handleEditCategoryChange = (value: string) => {
+    if (!editForm) return;
+    setEditForm({ ...editForm, category: value });
+  };
+
   const handleGrowthRateChange = (index: number, value: number) => {
     if (!editForm) return;
     
@@ -594,14 +737,55 @@ export default function StockWatchlist() {
     setEditWarnings(warnings);
   };
 
+  // Bear/bull inputs live in the edit form as optional objects. An empty
+  // field is NaN and the case stays unset until ALL five growth rates and
+  // the multiple are entered — nothing is ever copied from the base case.
+  const handleScenarioMultipleChange = (scenario: 'bearCase' | 'bullCase', value: number) => {
+    if (!editForm) return;
+    setEditForm({
+      ...editForm,
+      [scenario]: {
+        growthRates: editForm[scenario]?.growthRates ?? [NaN, NaN, NaN, NaN, NaN],
+        valuationMultiple: value
+      }
+    });
+  };
+
+  const handleScenarioGrowthRateChange = (scenario: 'bearCase' | 'bullCase', index: number, value: number) => {
+    if (!editForm) return;
+    const current = editForm[scenario] ?? { growthRates: [NaN, NaN, NaN, NaN, NaN], valuationMultiple: NaN };
+    setEditForm({
+      ...editForm,
+      [scenario]: {
+        growthRates: current.growthRates.map((rate, i) => (i === index ? value : rate)),
+        valuationMultiple: current.valuationMultiple
+      }
+    });
+  };
+
+  const handleClearScenario = (scenario: 'bearCase' | 'bullCase') => {
+    if (!editForm) return;
+    const next = { ...editForm };
+    delete next[scenario];
+    setEditForm(next);
+  };
+
+  // Blank for unset/empty scenario numbers (NaN), so the form never shows
+  // a made-up value.
+  const scenarioInputValue = (value: number | undefined): number | '' =>
+    value !== undefined && Number.isFinite(value) ? value : '';
+
   const saveEdit = async () => {
     if (!editingStock || !editForm) return;
 
     try {
-      // Recalculate DCF with new inputs
+      // Recalculate DCF with new inputs (base case)
       const { results } = calculateDCF(editForm);
       const trimmedInvestorRelationsLink = editForm.investorRelationsLink?.trim() || '';
-      
+      // Strip any half-filled bear/bull case so only complete scenarios
+      // are ever saved — an unset case stays unset, never guessed.
+      const cleanForm = normalizeScenarioInputs(editForm);
+
       const { error } = await supabase
         .from('saved_stocks')
         .update({
@@ -612,9 +796,10 @@ export default function StockWatchlist() {
           cagr: results.cagr,
           buy_target: results.buyTargetPrice,
           dcf_inputs: {
-            ...editForm,
+            ...cleanForm,
             projectedPrices: results.projectedPrices,
-            investorRelationsLink: trimmedInvestorRelationsLink
+            investorRelationsLink: trimmedInvestorRelationsLink,
+            category: editForm.category?.trim() || ''
           },
           notes: editForm.notes || '',
           updated_at: new Date().toISOString()
@@ -978,6 +1163,7 @@ export default function StockWatchlist() {
       if (!dcfInputs) {
         return {
           Ticker: stock.ticker,
+          Category: stock.category ?? '',
           'Current Price': stock.currentPrice,
           'Desired Return (%)': '',
           'Valuation Metric': '',
@@ -1016,6 +1202,7 @@ export default function StockWatchlist() {
 
       return {
         Ticker: stock.ticker,
+        Category: stock.category ?? dcfInputs?.category ?? '',
         'Current Price': stock.currentPrice,
         'Desired Return (%)': resolvedInputs.desiredReturn,
         'Valuation Metric': resolvedInputs.valuationMetric,
@@ -1055,32 +1242,48 @@ export default function StockWatchlist() {
       if (searchTerm && !stock.ticker.toLowerCase().includes(searchTerm.toLowerCase())) {
         return false;
       }
+
+      // Category filter
+      if (categoryFilter !== 'all' && (stock.category || '') !== categoryFilter) {
+        return false;
+      }
       
-      // Valuation filter
+      // Valuation filter — relative to the displayed case's fair value
+      // (base fair value when the selected case is not entered).
       if (filterBy === 'favorites') return Boolean(stock.isFavorite);
-      if (filterBy === 'undervalued') return stock.currentPrice < stock.fairValue;
-      if (filterBy === 'overvalued') return stock.currentPrice > stock.fairValue;
-      if (filterBy === 'cagr10') return stock.cagr >= 0.1;
-      if (filterBy === 'cagr15') return stock.cagr >= 0.15;
-      if (filterBy === 'cagr20') return stock.cagr >= 0.2;
+      const displayFairValue = getDisplayValuation(stock, displayScenario).fairValue ?? stock.fairValue;
+      if (filterBy === 'undervalued') return stock.currentPrice < displayFairValue;
+      if (filterBy === 'overvalued') return stock.currentPrice > displayFairValue;
+      const displayCagr = getDisplayValuation(stock, displayScenario).cagr ?? stock.cagr;
+      if (filterBy === 'cagr10') return displayCagr >= 0.1;
+      if (filterBy === 'cagr15') return displayCagr >= 0.15;
+      if (filterBy === 'cagr20') return displayCagr >= 0.2;
       return true;
     })
     .sort((a, b) => {
       let comparison = 0;
+      // Sorts on valuation numbers follow the displayed case; an unset
+      // case sorts to the bottom (treated as -Infinity).
+      const aDisplay = getDisplayValuation(a, displayScenario);
+      const bDisplay = getDisplayValuation(b, displayScenario);
       switch (sortBy) {
         case 'expectedReturn':
-          comparison = b.expectedReturn - a.expectedReturn;
+          comparison = (bDisplay.expectedReturn ?? -Infinity) - (aDisplay.expectedReturn ?? -Infinity);
           break;
         case 'cagr':
-          comparison = b.cagr - a.cagr;
+          comparison = (bDisplay.cagr ?? -Infinity) - (aDisplay.cagr ?? -Infinity);
           break;
         case 'buyTarget':
-          comparison = a.buyTarget - b.buyTarget;
+          comparison = (aDisplay.buyTarget ?? -Infinity) - (bDisplay.buyTarget ?? -Infinity);
           break;
         case 'status':
           const statusOrder = { 'strong-buy': 0, 'buy': 1, 'hold': 2, 'overvalued': 3 };
-          const aStatus = getValuationStatus(a).status;
-          const bStatus = getValuationStatus(b).status;
+          const aStatus = aDisplay.isSet && aDisplay.fairValue !== null
+            ? getValuationStatusForFairValue(a.currentPrice, aDisplay.fairValue).status
+            : 'overvalued';
+          const bStatus = bDisplay.isSet && bDisplay.fairValue !== null
+            ? getValuationStatusForFairValue(b.currentPrice, bDisplay.fairValue).status
+            : 'overvalued';
           comparison = statusOrder[aStatus] - statusOrder[bStatus];
           break;
         case 'lastUpdated':
@@ -1089,12 +1292,25 @@ export default function StockWatchlist() {
         case 'valuation':
           comparison = (getCurrentValuation(b)?.value ?? 0) - (getCurrentValuation(a)?.value ?? 0);
           break;
+        case 'category':
+          comparison = (a.category ?? '').localeCompare(b.category ?? '');
+          break;
         default:
           comparison = a.ticker.localeCompare(b.ticker);
       }
       
       return sortDirection === 'desc' ? comparison : -comparison;
-    }), [stocks, searchTerm, filterBy, sortBy, sortDirection]);
+    }), [stocks, searchTerm, filterBy, categoryFilter, sortBy, sortDirection, displayScenario]);
+
+  // Categories actually present on the watchlist, for the filter dropdown.
+  // Built from the loaded rows so user-typed categories show up too.
+  const availableCategories = useMemo(() => {
+    const seen = new Set<string>();
+    stocks.forEach(stock => {
+      if (stock.category) seen.add(stock.category);
+    });
+    return [...seen].sort((a, b) => a.localeCompare(b));
+  }, [stocks]);
 
   if (loading) {
     return (
@@ -1151,6 +1367,39 @@ export default function StockWatchlist() {
                     />
                   </div>
                 </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                  <select
+                    value={editCustomCategory ? '__new__' : (editForm.category || '')}
+                    onChange={(e) => {
+                      if (e.target.value === '__new__') {
+                        setEditCustomCategory(true);
+                        handleEditCategoryChange('');
+                      } else {
+                        setEditCustomCategory(false);
+                        handleEditCategoryChange(e.target.value);
+                      }
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Select a category</option>
+                    {STOCK_CATEGORIES.map(category => (
+                      <option key={category} value={category}>{category}</option>
+                    ))}
+                    <option value="__new__">Create new category…</option>
+                  </select>
+                  {editCustomCategory && (
+                    <input
+                      type="text"
+                      value={editForm.category || ''}
+                      onChange={(e) => handleEditCategoryChange(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 mt-2"
+                      placeholder="New category name"
+                    />
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">One primary category per stock.</p>
+                </div>
                 
                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-[2fr_1fr]">
                   <div className="grid grid-cols-2 gap-4">
@@ -1201,6 +1450,100 @@ export default function StockWatchlist() {
                           type="number"
                           value={rate}
                           onChange={(e) => handleGrowthRateChange(index, parseFloat(e.target.value))}
+                          className="w-full px-2 py-1 border border-gray-300 rounded text-center text-sm focus:ring-2 focus:ring-blue-500"
+                          step="0.1"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                
+                {/* Bear Case (optional) */}
+                <div className="border border-red-200 bg-red-50 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">Bear Case (optional)</label>
+                    {(editForm.bearCase?.growthRates.some(rate => Number.isFinite(rate)) ||
+                      Number.isFinite(editForm.bearCase?.valuationMultiple)) && (
+                      <button
+                        type="button"
+                        onClick={() => handleClearScenario('bearCase')}
+                        className="text-xs text-gray-500 hover:text-red-600 underline"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Same inputs as the base case. Leave blank and the bear case stays unset.
+                  </p>
+                  <div className="grid grid-cols-2 gap-4 mb-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Valuation Multiple</label>
+                      <input
+                        type="number"
+                        value={scenarioInputValue(editForm.bearCase?.valuationMultiple)}
+                        onChange={(e) => handleScenarioMultipleChange('bearCase', parseFloat(e.target.value))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                        step="0.1"
+                        placeholder="e.g., 18"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-5 gap-2">
+                    {(editForm.bearCase?.growthRates ?? [NaN, NaN, NaN, NaN, NaN]).map((rate, index) => (
+                      <div key={index}>
+                        <label className="block text-xs text-gray-500 mb-1 text-center">Y{index + 1}</label>
+                        <input
+                          type="number"
+                          value={scenarioInputValue(rate)}
+                          onChange={(e) => handleScenarioGrowthRateChange('bearCase', index, parseFloat(e.target.value))}
+                          className="w-full px-2 py-1 border border-gray-300 rounded text-center text-sm focus:ring-2 focus:ring-blue-500"
+                          step="0.1"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Bull Case (optional) */}
+                <div className="border border-green-200 bg-green-50 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">Bull Case (optional)</label>
+                    {(editForm.bullCase?.growthRates.some(rate => Number.isFinite(rate)) ||
+                      Number.isFinite(editForm.bullCase?.valuationMultiple)) && (
+                      <button
+                        type="button"
+                        onClick={() => handleClearScenario('bullCase')}
+                        className="text-xs text-gray-500 hover:text-red-600 underline"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Same inputs as the base case. Leave blank and the bull case stays unset.
+                  </p>
+                  <div className="grid grid-cols-2 gap-4 mb-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Valuation Multiple</label>
+                      <input
+                        type="number"
+                        value={scenarioInputValue(editForm.bullCase?.valuationMultiple)}
+                        onChange={(e) => handleScenarioMultipleChange('bullCase', parseFloat(e.target.value))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                        step="0.1"
+                        placeholder="e.g., 32"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-5 gap-2">
+                    {(editForm.bullCase?.growthRates ?? [NaN, NaN, NaN, NaN, NaN]).map((rate, index) => (
+                      <div key={index}>
+                        <label className="block text-xs text-gray-500 mb-1 text-center">Y{index + 1}</label>
+                        <input
+                          type="number"
+                          value={scenarioInputValue(rate)}
+                          onChange={(e) => handleScenarioGrowthRateChange('bullCase', index, parseFloat(e.target.value))}
                           className="w-full px-2 py-1 border border-gray-300 rounded text-center text-sm focus:ring-2 focus:ring-blue-500"
                           step="0.1"
                         />
@@ -1328,6 +1671,69 @@ export default function StockWatchlist() {
                   </div>
                 </div>
                 
+                {/* Scenario Comparison — Bear / Base / Bull targets */}
+                {(() => {
+                  const bearResults = getScenarioResults(editForm, 'bear');
+                  const bullResults = getScenarioResults(editForm, 'bull');
+                  return (
+                <div>
+                  <h5 className="font-medium text-gray-700 mb-2">Scenario Targets — Bear / Base / Bull</h5>
+                  <p className="text-xs text-gray-500 mb-2">
+                    A case shows “—” until its growth rates and multiple are fully entered.
+                  </p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm border border-gray-200 rounded">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-2 py-1 text-left">Year</th>
+                          <th className="px-2 py-1 text-left text-red-600">Bear</th>
+                          <th className="px-2 py-1 text-left text-blue-600">Base</th>
+                          <th className="px-2 py-1 text-left text-green-600">Bull</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {editResults.projectedPrices.map((price: number, index: number) => {
+                          const baseYear = new Date(editingStock.updatedAt).getFullYear();
+                          return (
+                            <tr key={index}>
+                              <td className="px-2 py-1">{baseYear + index + 1}</td>
+                              <td className="px-2 py-1 font-medium text-red-600">
+                                {bearResults ? formatCurrency(bearResults.projectedPrices[index]) : '—'}
+                              </td>
+                              <td className="px-2 py-1 font-medium text-blue-600">{formatCurrency(price)}</td>
+                              <td className="px-2 py-1 font-medium text-green-600">
+                                {bullResults ? formatCurrency(bullResults.projectedPrices[index]) : '—'}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        <tr className="bg-gray-50">
+                          <td className="px-2 py-1 font-medium">Fair Value</td>
+                          <td className="px-2 py-1 font-medium text-red-600">
+                            {bearResults ? formatCurrency(bearResults.fairValue) : '—'}
+                          </td>
+                          <td className="px-2 py-1 font-medium text-blue-600">{formatCurrency(editResults.fairValue)}</td>
+                          <td className="px-2 py-1 font-medium text-green-600">
+                            {bullResults ? formatCurrency(bullResults.fairValue) : '—'}
+                          </td>
+                        </tr>
+                        <tr className="bg-gray-50">
+                          <td className="px-2 py-1 font-medium">Buy Target</td>
+                          <td className="px-2 py-1 font-medium text-red-600">
+                            {bearResults ? formatCurrency(bearResults.buyTargetPrice) : '—'}
+                          </td>
+                          <td className="px-2 py-1 font-medium text-blue-600">{formatCurrency(editResults.buyTargetPrice)}</td>
+                          <td className="px-2 py-1 font-medium text-green-600">
+                            {bullResults ? formatCurrency(bullResults.buyTargetPrice) : '—'}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                  );
+                })()}
+
                 {/* Valuation Summary */}
                 <div className="bg-gray-50 rounded-lg p-3">
                   <h5 className="font-medium text-gray-700 mb-2">Valuation Summary</h5>
@@ -1422,6 +1828,7 @@ export default function StockWatchlist() {
                   className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 min-w-0"
                 >
                   <option value="ticker">Sort: Ticker</option>
+                  <option value="category">Sort: Category</option>
                   <option value="expectedReturn">Sort: Return</option>
                   <option value="cagr">Sort: CAGR</option>
                   <option value="buyTarget">Sort: Buy Target</option>
@@ -1452,6 +1859,46 @@ export default function StockWatchlist() {
                 <option value="cagr10">CAGR ~ 10%</option>
                 <option value="cagr15">CAGR ≥ 15%</option>
                 <option value="cagr20">CAGR ~ 20%</option>
+              </select>
+
+              {/* DCF case toggle: which case's targets/valuation the table shows */}
+              <div
+                className="inline-flex rounded-lg border border-gray-300 overflow-hidden"
+                role="group"
+                aria-label="DCF scenario"
+                title="Switch which DCF case the watchlist displays (base by default)"
+              >
+                {(['bear', 'base', 'bull'] as const).map(scenario => (
+                  <button
+                    key={scenario}
+                    type="button"
+                    onClick={() => handleDisplayScenarioChange(scenario)}
+                    aria-pressed={displayScenario === scenario}
+                    className={`px-3 py-2 text-sm font-medium capitalize transition-colors ${
+                      displayScenario === scenario
+                        ? scenario === 'bear'
+                          ? 'bg-red-600 text-white'
+                          : scenario === 'bull'
+                            ? 'bg-green-600 text-white'
+                            : 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {scenario}
+                  </button>
+                ))}
+              </div>
+
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 min-w-0"
+                title="Filter by category"
+              >
+                <option value="all">All Categories</option>
+                {availableCategories.map(category => (
+                  <option key={category} value={category}>{category}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -1535,6 +1982,7 @@ export default function StockWatchlist() {
                 <StockWatchlistRow
                   key={stock.id}
                   stock={stock}
+                  displayScenario={displayScenario}
                   priceUpdateFailed={failedPriceTickers.includes(stock.ticker.toUpperCase())}
                   priceUpdatePending={pendingPriceTickers.includes(stock.ticker.toUpperCase())}
                   priceHistory={priceHistory}

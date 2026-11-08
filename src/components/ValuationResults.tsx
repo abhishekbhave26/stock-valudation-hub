@@ -2,7 +2,7 @@ import React from 'react';
 import { TrendingUp, TrendingDown, AlertTriangle, Plus, RefreshCw } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from 'recharts';
 import { DCFResults, ValidationWarning, DCFInputs } from '../types';
-import { formatCurrency, formatPercentage, getPerformanceColor } from '../utils/dcf';
+import { formatCurrency, formatPercentage, getPerformanceColor, getScenarioResults, normalizeScenarioInputs } from '../utils/dcf';
 
 interface ValuationResultsProps {
   results: DCFResults;
@@ -25,7 +25,10 @@ export default function ValuationResults({
 }: ValuationResultsProps) {
   const handleSaveStock = () => {
     if (!onSaveStock) return;
-    
+
+    // Strip any half-filled bear/bull case so only complete scenarios
+    // are ever saved — an unset case stays unset, never guessed.
+    const cleanInputs = normalizeScenarioInputs(dcfInputs);
     const stockData = {
       ticker,
       currentPrice: dcfInputs.currentPrice,
@@ -34,11 +37,11 @@ export default function ValuationResults({
       cagr: results.cagr,
       buyTarget: results.buyTargetPrice,
       dcfInputs: {
-        ...dcfInputs,
+        ...cleanInputs,
         projectedPrices: results.projectedPrices
       }
     };
-    
+
     onSaveStock(stockData);
   };
 
@@ -60,6 +63,10 @@ export default function ValuationResults({
     growthRate: dcfInputs.growthRates[index],
     metricValue: results.projectedValues[index]
   }));
+
+  // Bear / bull results are null until the case is fully entered.
+  const bearResults = getScenarioResults(dcfInputs, 'bear');
+  const bullResults = getScenarioResults(dcfInputs, 'bull');
 
   const comparisonData = [
     {
@@ -218,6 +225,65 @@ export default function ValuationResults({
                     </tr>
                     );
                   })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {/* Bear / Base / Bull Scenario Targets */}
+        <div className="grid grid-cols-1 gap-6 mt-6">
+          <div className="space-y-3">
+            <h4 className="text-lg font-medium text-gray-700">Scenario Targets — Bear / Base / Bull</h4>
+            <p className="text-xs text-gray-500">
+              A case shows “—” until its growth rates and multiple are fully entered.
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full border border-gray-200 rounded-lg">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Year</th>
+                    <th className="px-4 py-2 text-left text-sm font-medium text-red-600">Bear Target</th>
+                    <th className="px-4 py-2 text-left text-sm font-medium text-blue-600">Base Target</th>
+                    <th className="px-4 py-2 text-left text-sm font-medium text-green-600">Bull Target</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {results.projectedPrices.map((price, index) => {
+                    const currentYear = new Date().getFullYear();
+                    return (
+                    <tr key={index} className="hover:bg-gray-50">
+                      <td className="px-4 py-2 text-sm font-medium text-gray-900">{currentYear + index + 1}</td>
+                      <td className="px-4 py-2 text-sm text-red-600 font-medium">
+                        {bearResults ? formatCurrency(bearResults.projectedPrices[index]) : '—'}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-blue-600 font-medium">{formatCurrency(price)}</td>
+                      <td className="px-4 py-2 text-sm text-green-600 font-medium">
+                        {bullResults ? formatCurrency(bullResults.projectedPrices[index]) : '—'}
+                      </td>
+                    </tr>
+                    );
+                  })}
+                  <tr className="bg-gray-50">
+                    <td className="px-4 py-2 text-sm font-medium text-gray-900">Fair Value</td>
+                    <td className="px-4 py-2 text-sm text-red-600 font-medium">
+                      {bearResults ? formatCurrency(bearResults.fairValue) : '—'}
+                    </td>
+                    <td className="px-4 py-2 text-sm text-blue-600 font-medium">{formatCurrency(results.fairValue)}</td>
+                    <td className="px-4 py-2 text-sm text-green-600 font-medium">
+                      {bullResults ? formatCurrency(bullResults.fairValue) : '—'}
+                    </td>
+                  </tr>
+                  <tr className="bg-gray-50">
+                    <td className="px-4 py-2 text-sm font-medium text-gray-900">Buy Target</td>
+                    <td className="px-4 py-2 text-sm text-red-600 font-medium">
+                      {bearResults ? formatCurrency(bearResults.buyTargetPrice) : '—'}
+                    </td>
+                    <td className="px-4 py-2 text-sm text-blue-600 font-medium">{formatCurrency(results.buyTargetPrice)}</td>
+                    <td className="px-4 py-2 text-sm text-green-600 font-medium">
+                      {bullResults ? formatCurrency(bullResults.buyTargetPrice) : '—'}
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>
