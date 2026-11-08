@@ -162,6 +162,12 @@ interface PersistedPriceQueue {
   attempts: Record<string, number>;
   nextRetryAt: number; // epoch ms — earliest the queue may resume fetching
   startedAt: number;
+  // Tickers that already failed outright in the first wave (e.g. CSU.CA,
+  // which has no price data on the free plan). These live in the persisted
+  // queue — not just in memory — so a page reload mid-queue cannot lose
+  // them: the resumed drain reports them in the failure banner instead of
+  // claiming "All prices updated" while they sit stale.
+  failed: string[];
 }
 
 const loadPersistedPriceQueue = (): PersistedPriceQueue | null => {
@@ -171,6 +177,8 @@ const loadPersistedPriceQueue = (): PersistedPriceQueue | null => {
     const queue = JSON.parse(stored) as PersistedPriceQueue;
     if (!queue || !Array.isArray(queue.symbols) || queue.symbols.length === 0) return null;
     if (Date.now() - queue.startedAt > PRICE_QUEUE_MAX_AGE_MS) return null;
+    // Queues saved by the pre-fix build have no `failed` list yet.
+    if (!Array.isArray(queue.failed)) queue.failed = [];
     return queue;
   } catch (error) {
     console.warn('Failed to load pending price-update queue:', error);
@@ -286,10 +294,9 @@ const StockWatchlistRow = memo(function StockWatchlistRow({
             />
           )}
           {priceUpdatePending && (
-            <Loader2
-              className="w-4 h-4 text-blue-500 animate-spin"
-              title="Price updating in the background — will fill in automatically"
-            />
+            <span title="Price updating in the background — will fill in automatically">
+              <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+            </span>
           )}
         </div>
       </td>
@@ -688,7 +695,7 @@ export default function StockWatchlist() {
     // A category outside the fixed list means it was created custom — keep
     // the custom input open so it stays editable instead of vanishing.
     setEditCustomCategory(
-      Boolean(stock.category) && !STOCK_CATEGORIES.includes(stock.category)
+      Boolean(stock.category) && !STOCK_CATEGORIES.includes(stock.category ?? '')
     );
 
     // Calculate initial results
@@ -933,13 +940,16 @@ export default function StockWatchlist() {
     runId: number,
     initialFailed: string[] = []
   ) => {
+    // The failed list lives ON the queue object (not in a separate local)
+    // so every re-persist of the queue carries it: a reload mid-queue
+    // resumes with the first-wave failures intact.
     let queue: PersistedPriceQueue = {
       symbols: [...initialQueue.symbols],
       attempts: { ...initialQueue.attempts },
       nextRetryAt: initialQueue.nextRetryAt,
-      startedAt: initialQueue.startedAt
+      startedAt: initialQueue.startedAt,
+      failed: [...new Set([...(initialQueue.failed ?? []), ...initialFailed])]
     };
-    const failed: string[] = [...initialFailed];
 
     while (queue.symbols.length > 0) {
       if (runId !== queueRunIdRef.current) return; // cancelled / superseded
@@ -977,14 +987,14 @@ export default function StockWatchlist() {
           const attempts = (queue.attempts[symbol] ?? 1) + 1;
           queue.attempts[symbol] = attempts;
           if (attempts > PRICE_QUEUE_MAX_ATTEMPTS) {
-            failed.push(symbol);
+            queue.failed.push(symbol);
           } else {
             stillPending.push(symbol);
           }
         } else {
           // No usable price data (e.g. CSU.CA on the free plan) — retrying
           // will not help, so this counts as failed right away.
-          failed.push(symbol);
+          queue.failed.push(symbol);
         }
 
         // Keep the visible pending set in step with what is left.
@@ -1016,8 +1026,8 @@ export default function StockWatchlist() {
     setPriceQueueActive(false);
     setPendingPriceTickers([]);
     savePersistedPriceQueue(null);
-    setFailedPriceTickers(failed);
-    setPriceUpdateComplete(failed.length === 0);
+    setFailedPriceTickers(queue.failed);
+    setPriceUpdateComplete(queue.failed.length === 0);
     // One final reload so prices, updated dates and price history are all
     // in step with what the queue just saved.
     await loadStocks();
@@ -1072,7 +1082,8 @@ export default function StockWatchlist() {
           symbols: rateLimitedSymbols,
           attempts: Object.fromEntries(rateLimitedSymbols.map(symbol => [symbol, 1])),
           nextRetryAt: Date.now() + PRICE_QUEUE_RETRY_DELAY_MS,
-          startedAt: Date.now()
+          startedAt: Date.now(),
+          failed: failedSymbols
         };
         savePersistedPriceQueue(queue);
         setPendingPriceTickers(rateLimitedSymbols);

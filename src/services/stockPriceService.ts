@@ -85,11 +85,19 @@ class StockPriceService {
   private async waitForRateLimit(): Promise<void> {
     while (true) {
       const now = Date.now();
-      this.requestTimestamps = this.requestTimestamps.filter(timestamp => now - timestamp < 1000);
-      if (this.requestTimestamps.length < this.MAX_REQUESTS_PER_SECOND) {
+      // Read-only check: do NOT reassign this.requestTimestamps here.
+      // The per-minute reservation check (tryReserveMinuteSlot) relies on
+      // the full 60s of timestamps; filtering the shared array down to
+      // the last second (as the old code did) erased that history, so the
+      // 55/min cap never bound — the first wave fired 60+ calls in ~8s,
+      // Finnhub 429'd the tail, and the drain's first retry round hit the
+      // still-full rolling window and 429'd again (drain ~150s instead of
+      // the designed ~70-90s).
+      const recentSecond = this.requestTimestamps.filter(timestamp => now - timestamp < 1000);
+      if (recentSecond.length < this.MAX_REQUESTS_PER_SECOND) {
         return;
       }
-      const waitTime = 1000 - (now - this.requestTimestamps[0]);
+      const waitTime = 1000 - (now - recentSecond[0]);
       await new Promise(resolve => setTimeout(resolve, Math.max(waitTime, 50)));
     }
   }
