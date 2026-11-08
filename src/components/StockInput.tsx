@@ -172,14 +172,19 @@ export default function StockInput({ onCalculate, loading }: StockInputProps) {
       setFetchingPrice(false);
     }
   };
+  // Short display labels keep the full metric name readable in the
+  // select (the long "Price-to-..." labels clipped in the edit form).
+  // `value` is unchanged; `fullLabel` keeps the complete name
+  // discoverable via the select's title tooltip. Same list as the
+  // StockWatchlist edit form.
   const valuationMetrics = [
-    { value: 'P/S', label: 'Price-to-Sales (P/S)' },
-    { value: 'P/E', label: 'Price-to-Earnings (P/E)' },
-    { value: 'P/FCF', label: 'Price-to-Free Cash Flow (P/FCF)' },
-    { value: 'P/B', label: 'Price-to-Book (P/B)' },
-    { value: 'P/OCF', label: 'Price-to-Operating Cash Flow (P/OCF)' },
-    { value: 'EV/Sales', label: 'EV/Sales' },
-    { value: 'EV/EBITDA', label: 'EV/EBITDA' }
+    { value: 'P/S', label: 'Sales (P/S)', fullLabel: 'Price-to-Sales (P/S)' },
+    { value: 'P/E', label: 'Earnings (P/E)', fullLabel: 'Price-to-Earnings (P/E)' },
+    { value: 'P/FCF', label: 'Free Cash Flow (P/FCF)', fullLabel: 'Price-to-Free Cash Flow (P/FCF)' },
+    { value: 'P/B', label: 'Book Value (P/B)', fullLabel: 'Price-to-Book (P/B)' },
+    { value: 'P/OCF', label: 'Operating Cash Flow (P/OCF)', fullLabel: 'Price-to-Operating Cash Flow (P/OCF)' },
+    { value: 'EV/Sales', label: 'EV/Sales', fullLabel: 'EV/Sales' },
+    { value: 'EV/EBITDA', label: 'EV/EBITDA', fullLabel: 'EV/EBITDA' }
   ];
 
   return (
@@ -304,13 +309,14 @@ export default function StockInput({ onCalculate, loading }: StockInputProps) {
             />
           </div>
 
-          <div>
+          <div className="min-w-0">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Valuation Metric
             </label>
             <select
               value={formData.valuationMetric}
               onChange={(e) => handleInputChange('valuationMetric', e.target.value)}
+              title={valuationMetrics.find(metric => metric.value === formData.valuationMetric)?.fullLabel ?? ''}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               {valuationMetrics.map(metric => (

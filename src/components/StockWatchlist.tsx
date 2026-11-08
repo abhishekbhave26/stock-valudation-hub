@@ -245,10 +245,10 @@ const StockWatchlistRow = memo(function StockWatchlistRow({
   const missingConfig = getMissingConfig(stock);
   const needsUpdate = isStale || missingConfig.length > 0;
   // Tooltip naming every reason this row is flagged, e.g.
-  // "Last updated Oct 05, 2026 - over 90 days ago — Config needs update: Bear case, Category".
+  // "Last updated Oct 05, 2026 - over 90 days ago — Needs: Bear case, Category".
   const needsUpdateTitle = [
     isStale ? `Last updated ${format(new Date(stock.updatedAt), 'MMM dd, yyyy')} - over 90 days ago` : null,
-    missingConfig.length > 0 ? `Config needs update: ${missingConfig.join(', ')}` : null,
+    missingConfig.length > 0 ? `Needs: ${missingConfig.join(', ')}` : null,
   ].filter(Boolean).join(' — ');
   const currentValuation = getCurrentValuation(stock);
   const dayChange = getDayChange(priceHistory, stock);
@@ -409,15 +409,15 @@ const StockWatchlistRow = memo(function StockWatchlistRow({
           <span className="text-sm text-gray-400" title={`${displayScenario === 'bear' ? 'Bear' : 'Bull'} case not entered yet`}>—</span>
         )}
       </td>
-      <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
-        <div className={`text-sm ${needsUpdate ? 'text-red-600 font-medium' : 'text-gray-900'}`}>
+      <td className="px-3 sm:px-6 py-4">
+        <div className={`whitespace-nowrap text-xs sm:text-sm ${needsUpdate ? 'text-red-600 font-medium' : 'text-gray-900'}`}>
           {format(new Date(stock.updatedAt), 'MMM dd, yyyy')}
         </div>
         {isStale && (
-          <div className="text-xs text-red-500">Needs update</div>
+          <div className="text-[11px] sm:text-xs text-red-500">Needs update</div>
         )}
         {missingConfig.length > 0 && (
-          <div className="text-xs text-red-500">Config needs update: {missingConfig.join(' · ')}</div>
+          <div className="max-w-36 sm:max-w-none whitespace-normal break-words text-[11px] leading-snug sm:text-xs text-red-500">Needs: {missingConfig.map(item => item.replace(' case', '')).join(' · ')}</div>
         )}
       </td>
       <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -518,14 +518,18 @@ export default function StockWatchlist() {
   const queueResumedRef = useRef(false);
 
   const WATCHLIST_LIMIT = 500;
+  // Short display labels keep the full metric name readable in the
+  // narrow edit-form select (the long "Price-to-..." labels clipped to
+  // "Price-to-Earnir…"). `value` is unchanged; `fullLabel` keeps the
+  // complete name discoverable via the select's title tooltip.
   const valuationMetrics = [
-    { value: 'P/S', label: 'Price-to-Sales (P/S)' },
-    { value: 'P/E', label: 'Price-to-Earnings (P/E)' },
-    { value: 'P/FCF', label: 'Price-to-Free Cash Flow (P/FCF)' },
-    { value: 'P/B', label: 'Price-to-Book (P/B)' },
-    { value: 'P/OCF', label: 'Price-to-Operating Cash Flow (P/OCF)' },
-    { value: 'EV/Sales', label: 'EV/Sales' },
-    { value: 'EV/EBITDA', label: 'EV/EBITDA' }
+    { value: 'P/S', label: 'Sales (P/S)', fullLabel: 'Price-to-Sales (P/S)' },
+    { value: 'P/E', label: 'Earnings (P/E)', fullLabel: 'Price-to-Earnings (P/E)' },
+    { value: 'P/FCF', label: 'Free Cash Flow (P/FCF)', fullLabel: 'Price-to-Free Cash Flow (P/FCF)' },
+    { value: 'P/B', label: 'Book Value (P/B)', fullLabel: 'Price-to-Book (P/B)' },
+    { value: 'P/OCF', label: 'Operating Cash Flow (P/OCF)', fullLabel: 'Price-to-Operating Cash Flow (P/OCF)' },
+    { value: 'EV/Sales', label: 'EV/Sales', fullLabel: 'EV/Sales' },
+    { value: 'EV/EBITDA', label: 'EV/EBITDA', fullLabel: 'EV/EBITDA' }
   ];
 
   const loadStocks = useCallback(async () => {
@@ -1415,8 +1419,8 @@ export default function StockWatchlist() {
                   <div className="flex items-center justify-between mb-2">
                     <label className="block text-sm font-medium text-gray-700">Base Case</label>
                   </div>
-                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-[2fr_1fr] mb-3">
-                    <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-[3fr_1fr] mb-3">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_2fr]">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Valuation Multiple</label>
                         <input
@@ -1427,12 +1431,13 @@ export default function StockWatchlist() {
                           step="0.1"
                         />
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <label className="block text-sm font-medium text-gray-700 mb-1">Valuation Metric</label>
                         <select
                           value={editForm.valuationMetric}
                           onChange={(e) => handleEditFormChange('valuationMetric', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                          title={valuationMetrics.find(metric => metric.value === editForm.valuationMetric)?.fullLabel ?? ''}
+                          className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 text-sm"
                         >
                           {valuationMetrics.map(metric => (
                             <option key={metric.value} value={metric.value}>
