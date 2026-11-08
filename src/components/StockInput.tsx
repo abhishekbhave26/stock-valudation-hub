@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Search, TrendingUp, RefreshCw } from 'lucide-react';
 import { DCFInputs, DCFScenarioInputs } from '../types';
-import { STOCK_CATEGORIES } from '../utils/categories';
+import { useTaxonomy } from '../hooks/useTaxonomy';
+import TaxonomyMultiSelect from './TaxonomyMultiSelect';
 import { stockPriceService } from '../services/stockPriceService';
 
 interface StockInputProps {
@@ -28,12 +29,16 @@ export default function StockInput({ onCalculate, loading }: StockInputProps) {
     baseMetricPerShare: 0,
     desiredReturn: 15,
     growthRates: [15, 12, 10, 8, 6],
-    category: ''
+    category: [],
+    region: []
   });
   const [fetchingPrice, setFetchingPrice] = useState(false);
-  // True while the "Create new category…" option is picked in the Category
-  // dropdown, so a free-text input is shown instead.
-  const [showCustomCategory, setShowCustomCategory] = useState(false);
+  // Dropdown options come from the taxonomy registry (seed list while the
+  // registry table does not exist yet). The add form loads no rows, so no
+  // in-use names are passed in — a custom name typed here is saved on the
+  // stock and joins the options from the watchlist onward.
+  const { options: categoryOptions } = useTaxonomy('category', []);
+  const { options: regionOptions } = useTaxonomy('region', []);
 
   const handleInputChange = (field: keyof DCFInputs, value: any) => {
     setFormData(prev => ({
@@ -257,40 +262,22 @@ export default function StockInput({ onCalculate, loading }: StockInputProps) {
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Category
-            </label>
-            <select
-              value={showCustomCategory ? '__new__' : (formData.category || '')}
-              onChange={(e) => {
-                if (e.target.value === '__new__') {
-                  setShowCustomCategory(true);
-                  handleInputChange('category', '');
-                } else {
-                  setShowCustomCategory(false);
-                  handleInputChange('category', e.target.value);
-                }
-              }}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">Select a category</option>
-              {STOCK_CATEGORIES.map(category => (
-                <option key={category} value={category}>{category}</option>
-              ))}
-              <option value="__new__">Create new category…</option>
-            </select>
-            {showCustomCategory && (
-              <input
-                type="text"
-                value={formData.category || ''}
-                onChange={(e) => handleInputChange('category', e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent mt-2"
-                placeholder="New category name"
-              />
-            )}
-            <p className="text-xs text-gray-500 mt-1">One primary category per stock.</p>
-          </div>
+          <TaxonomyMultiSelect
+            label="Category"
+            options={categoryOptions}
+            selected={formData.category ?? []}
+            onChange={value => handleInputChange('category', value)}
+            createPlaceholder="New category name"
+          />
+
+          <TaxonomyMultiSelect
+            label="Region"
+            options={regionOptions}
+            selected={formData.region ?? []}
+            onChange={value => handleInputChange('region', value)}
+            createPlaceholder="New region name"
+            exclusiveValue="Global"
+          />
         </div>
 
         {/* Shared Inputs — Common to All Cases */}

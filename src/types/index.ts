@@ -29,10 +29,18 @@ export interface DCFInputs {
   bullCase?: DCFScenarioInputs;
   notes?: string;
   investorRelationsLink?: string;
-  /** One primary category for the stock (e.g. "Big Tech", "AI Semiconductors").
-   *  Picked from a fixed list in the form, with a "create new category"
-   *  option; stored in the saved row's dcf_inputs JSONB. */
-  category?: string;
+  /** Categories for the stock (e.g. "Big Tech", "AI Semiconductors").
+   *  A stock can have several. Picked in the form's multi-select, with a
+   *  "create new" input; stored as an array in the saved row's dcf_inputs
+   *  JSONB. Older rows hold a single string — read through
+   *  normalizeStringList, which turns it into a one-element array. */
+  category?: string[];
+  /** Regions for the stock (e.g. "United States", "Europe", "Global").
+   *  Parallel to category: multi-select in the form, stored as an array in
+   *  dcf_inputs JSONB. "Global" is exclusive — a stock with Global has no
+   *  other region. Blank until set — unlike category, a missing region is
+   *  never flagged in the watchlist. */
+  region?: string[];
 }
 
 export interface DCFResults {
@@ -63,9 +71,14 @@ export interface SavedStock {
   updatedAt: Date;
   notes?: string;
   isFavorite?: boolean;
-  /** One primary category for the stock, read from dcf_inputs.category.
-   *  Empty string when the stock has no category yet. */
-  category?: string;
+  /** Categories for the stock, read from dcf_inputs.category and normalized
+   *  to an array (a stored single string becomes one element; "N/A" and
+   *  blanks become empty). Empty when the stock has no category yet. */
+  categories: string[];
+  /** Regions for the stock, read from dcf_inputs.region and normalized the
+   *  same way. Empty when the stock has no region yet (existing stocks stay
+   *  blank until set in the UI — regions are not seeded by migration). */
+  regions: string[];
 }
 
 export interface PortfolioStock {
