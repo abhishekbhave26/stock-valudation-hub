@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
-import { TrendingUp, TrendingDown, Trash2, BarChart3, CreditCard as Edit, RefreshCw, AlertTriangle, Search, Star, Download, ChevronDown, ChevronRight, X, Loader2, CheckCircle2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Trash2, BarChart3, CreditCard as Edit, RefreshCw, AlertTriangle, Search, Star, Download, ChevronDown, ChevronRight, X, Loader2, CheckCircle2, Tags } from 'lucide-react';
 import { SavedStock } from '../types';
 import { supabase } from '../lib/supabase';
 import { formatCurrency, formatPercentage, getPerformanceColor, calculateDCF, getScenarioResults, normalizeScenarioInputs } from '../utils/dcf';
@@ -7,9 +7,12 @@ import { DCFInputs, DCFScenarioName } from '../types';
 import { stockPriceService } from '../services/stockPriceService';
 import type { StockPrice } from '../services/stockPriceService';
 import { useAuth } from '../hooks/useAuth';
+import { useTaxonomy } from '../hooks/useTaxonomy';
+import TaxonomyManager from './TaxonomyManager';
+import TaxonomyMultiSelect from './TaxonomyMultiSelect';
+import { normalizeStringList, firstSortedValue } from '../utils/taxonomy';
 import { format, differenceInDays } from 'date-fns';
 import { downloadCsv } from '../utils/csv';
-import { STOCK_CATEGORIES } from '../utils/categories';
 
 // Pure helpers (module scope so the memoized row and the sorted list can share them
 // without re-creating them on every render).
@@ -82,25 +85,14 @@ const isStockStale = (stock: SavedStock) => {
   return daysSinceUpdate > 90;
 };
 
-// A category counts as set when it is a non-empty value other than "N/A"
-// (the placeholder used when no category fits a stock yet).
-const isCategorySet = (category: string | undefined | null): boolean => {
-  if (!category) return false;
-  const value = category.trim();
-  return value !== '' && value.toUpperCase() !== 'N/A';
-};
-
 /** Config items still missing for a stock, as short labels: currently only
  *  'Category'. Bear/bull cases are optional scenarios, not required config,
- *  so an unset bear or bull case never flags the row. Empty array means the
- *  stock's config is complete. Reads `stock.category` (populated by the
- *  categories work's loadStocks mapping) with a fallback to
- *  `dcf_inputs.category`. */
+ *  so an unset bear or bull case never flags the row. A stock flags only
+ *  when it has ZERO categories — one or more is fine. Regions never feed
+ *  this flag. Empty array means the stock's config is complete. */
 const getMissingConfig = (stock: SavedStock): string[] => {
   const missing: string[] = [];
-  const inputs = stock.dcf_inputs;
-  const category = stock.category ?? inputs?.category;
-  if (!isCategorySet(category)) missing.push('Category');
+  if (stock.categories.length === 0) missing.push('Category');
   return missing;
 };
 
@@ -259,15 +251,24 @@ const StockWatchlistRow = memo(function StockWatchlistRow({
           </button>
           <div className="flex flex-col">
             <div className="font-medium text-gray-900">{stock.ticker}</div>
-            {stock.category ? (
-              <span className="inline-flex items-center self-start px-1.5 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600 mt-0.5">
-                {stock.category}
-              </span>
-            ) : (
-              <span className="inline-flex items-center self-start px-1.5 py-0.5 rounded text-[11px] font-medium bg-gray-50 text-gray-400 mt-0.5">
-                N/A
-              </span>
-            )}
+            <div className="flex flex-wrap gap-1 mt-0.5">
+              {stock.categories.length > 0 ? (
+                stock.categories.map(category => (
+                  <span key={category} className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+                    {category}
+                  </span>
+                ))
+              ) : (
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-gray-50 text-gray-400">
+                  N/A
+                </span>
+              )}
+              {stock.regions.map(region => (
+                <span key={region} className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-700">
+                  {region}
+                </span>
+              ))}
+            </div>
           </div>
           {needsUpdate && (
             <AlertTriangle
@@ -451,7 +452,7 @@ export default function StockWatchlist() {
   const { user } = useAuth();
   const [stocks, setStocks] = useState<SavedStock[]>([]);
   const [loading, setLoading] = useState(false);
-  const [sortBy, setSortBy] = useState<'ticker' | 'expectedReturn' | 'cagr' | 'buyTarget' | 'status' | 'lastUpdated' | 'valuation' | 'category'>('cagr');
+  const [sortBy, setSortBy] = useState<'ticker' | 'expectedReturn' | 'cagr' | 'buyTarget' | 'status' | 'lastUpdated' | 'valuation' | 'category' | 'region'>('cagr');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   // Which DCF case the watchlist displays (base by default). Persisted so
   // the toggle survives reloads; base-case storage is untouched.
@@ -468,12 +469,28 @@ export default function StockWatchlist() {
     'all' | 'favorites' | 'undervalued' | 'overvalued' | 'cagr10' | 'cagr15' | 'cagr20'
   >('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [regionFilter, setRegionFilter] = useState<string>('all');
+  // True while the Categories | Regions manager is shown instead of the table.
+  const [showManager, setShowManager] = useState(false);
+  // Bumped after the manager changes anything, so every useTaxonomy
+  // instance re-reads the registry.
+  const [taxonomyRefreshKey, setTaxonomyRefreshKey] = useState(0);
+  // Dropdown options for the edit form: registry names plus any name
+  // actually in use on the loaded rows (seed list while the registry table
+  // does not exist yet).
+  const inUseCategories = useMemo(
+    () => stocks.flatMap(stock => stock.categories),
+    [stocks]
+  );
+  const inUseRegions = useMemo(
+    () => stocks.flatMap(stock => stock.regions),
+    [stocks]
+  );
+  const { options: categoryOptions } = useTaxonomy('category', inUseCategories, taxonomyRefreshKey);
+  const { options: regionOptions } = useTaxonomy('region', inUseRegions, taxonomyRefreshKey);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingStock, setEditingStock] = useState<SavedStock | null>(null);
   const [editForm, setEditForm] = useState<DCFInputs | null>(null);
-  // True while the "Create new category…" option is picked in the edit
-  // modal's Category dropdown, so a free-text input is shown instead.
-  const [editCustomCategory, setEditCustomCategory] = useState(false);
   const [editResults, setEditResults] = useState<any>(null);
   const [editWarnings, setEditWarnings] = useState<any[]>([]);
   const [updatingPrices, setUpdatingPrices] = useState(false);
@@ -563,9 +580,12 @@ export default function StockWatchlist() {
             cagr: cagr,
             buyTarget: stock.buy_target,
             isFavorite: stock.is_favorite ?? false,
-            // Category lives in the saved row's dcf_inputs JSONB (no schema
-            // change needed); empty when the stock has no category yet.
-            category: stock.dcf_inputs?.category?.trim() || ''
+            // Categories/regions live in the saved row's dcf_inputs JSONB
+            // (no schema change needed). Stored as arrays going forward;
+            // older single-string values normalize to one element, and the
+            // old "N/A" placeholder normalizes to empty.
+            categories: normalizeStringList(stock.dcf_inputs?.category),
+            regions: normalizeStringList(stock.dcf_inputs?.region)
           };
         });
         setStocks(enrichedStocks);
@@ -682,14 +702,12 @@ export default function StockWatchlist() {
       ...stock.dcf_inputs,
       currentPrice: stock.currentPrice,
       notes: stock.notes || '',
-      investorRelationsLink: stock.dcf_inputs?.investorRelationsLink || ''
+      investorRelationsLink: stock.dcf_inputs?.investorRelationsLink || '',
+      // Normalize to arrays: older rows hold a single string (or "N/A").
+      category: normalizeStringList(stock.dcf_inputs?.category),
+      region: normalizeStringList(stock.dcf_inputs?.region)
     };
     setEditForm(formData);
-    // A category outside the fixed list means it was created custom — keep
-    // the custom input open so it stays editable instead of vanishing.
-    setEditCustomCategory(
-      Boolean(stock.category) && !STOCK_CATEGORIES.includes(stock.category)
-    );
 
     // Calculate initial results
     const { results, warnings } = calculateDCF(formData);
@@ -714,13 +732,6 @@ export default function StockWatchlist() {
     const { results, warnings } = calculateDCF(updatedForm);
     setEditResults(results);
     setEditWarnings(warnings);
-  };
-
-  // Category is free text (not a number), so it has its own handler.
-  // It rides along in editForm and is saved into dcf_inputs by saveEdit.
-  const handleEditCategoryChange = (value: string) => {
-    if (!editForm) return;
-    setEditForm({ ...editForm, category: value });
   };
 
   const handleGrowthRateChange = (index: number, value: number) => {
@@ -799,7 +810,8 @@ export default function StockWatchlist() {
             ...cleanForm,
             projectedPrices: results.projectedPrices,
             investorRelationsLink: trimmedInvestorRelationsLink,
-            category: editForm.category?.trim() || ''
+            category: normalizeStringList(editForm.category),
+            region: normalizeStringList(editForm.region)
           },
           notes: editForm.notes || '',
           updated_at: new Date().toISOString()
@@ -1163,7 +1175,8 @@ export default function StockWatchlist() {
       if (!dcfInputs) {
         return {
           Ticker: stock.ticker,
-          Category: stock.category ?? '',
+          Category: stock.categories.join('; '),
+          Region: stock.regions.join('; '),
           'Current Price': stock.currentPrice,
           'Desired Return (%)': '',
           'Valuation Metric': '',
@@ -1202,7 +1215,8 @@ export default function StockWatchlist() {
 
       return {
         Ticker: stock.ticker,
-        Category: stock.category ?? dcfInputs?.category ?? '',
+        Category: stock.categories.join('; '),
+        Region: stock.regions.join('; '),
         'Current Price': stock.currentPrice,
         'Desired Return (%)': resolvedInputs.desiredReturn,
         'Valuation Metric': resolvedInputs.valuationMetric,
@@ -1243,8 +1257,13 @@ export default function StockWatchlist() {
         return false;
       }
 
-      // Category filter
-      if (categoryFilter !== 'all' && (stock.category || '') !== categoryFilter) {
+      // Category filter — a stock matches if ANY of its categories match.
+      if (categoryFilter !== 'all' && !stock.categories.includes(categoryFilter)) {
+        return false;
+      }
+
+      // Region filter, parallel to category — ANY match.
+      if (regionFilter !== 'all' && !stock.regions.includes(regionFilter)) {
         return false;
       }
       
@@ -1293,21 +1312,37 @@ export default function StockWatchlist() {
           comparison = (getCurrentValuation(b)?.value ?? 0) - (getCurrentValuation(a)?.value ?? 0);
           break;
         case 'category':
-          comparison = (a.category ?? '').localeCompare(b.category ?? '');
+          // Sort key is the alphabetically-first category (see
+          // firstSortedValue) so multi-value stocks sort deterministically.
+          comparison = firstSortedValue(a.categories).localeCompare(firstSortedValue(b.categories));
+          break;
+        case 'region':
+          comparison = firstSortedValue(a.regions).localeCompare(firstSortedValue(b.regions));
           break;
         default:
           comparison = a.ticker.localeCompare(b.ticker);
       }
       
       return sortDirection === 'desc' ? comparison : -comparison;
-    }), [stocks, searchTerm, filterBy, categoryFilter, sortBy, sortDirection, displayScenario]);
+    }), [stocks, searchTerm, filterBy, categoryFilter, regionFilter, sortBy, sortDirection, displayScenario]);
 
   // Categories actually present on the watchlist, for the filter dropdown.
   // Built from the loaded rows so user-typed categories show up too.
   const availableCategories = useMemo(() => {
     const seen = new Set<string>();
     stocks.forEach(stock => {
-      if (stock.category) seen.add(stock.category);
+      stock.categories.forEach(category => seen.add(category));
+    });
+    return [...seen].sort((a, b) => a.localeCompare(b));
+  }, [stocks]);
+
+  // Regions actually present on the watchlist, for the filter dropdown.
+  // Same derivation as categories; a merged-away region drops out here
+  // as soon as no stock has it.
+  const availableRegions = useMemo(() => {
+    const seen = new Set<string>();
+    stocks.forEach(stock => {
+      stock.regions.forEach(region => seen.add(region));
     });
     return [...seen].sort((a, b) => a.localeCompare(b));
   }, [stocks]);
@@ -1318,6 +1353,21 @@ export default function StockWatchlist() {
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
         <p className="text-gray-500 mt-2">Loading watchlist...</p>
       </div>
+    );
+  }
+
+  // Categories | Regions manager, one click from the watchlist and back.
+  if (showManager) {
+    return (
+      <TaxonomyManager
+        stocks={stocks}
+        refreshKey={taxonomyRefreshKey}
+        onBack={() => setShowManager(false)}
+        onChanged={() => {
+          loadStocks();
+          setTaxonomyRefreshKey(key => key + 1);
+        }}
+      />
     );
   }
 
@@ -1368,38 +1418,22 @@ export default function StockWatchlist() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                  <select
-                    value={editCustomCategory ? '__new__' : (editForm.category || '')}
-                    onChange={(e) => {
-                      if (e.target.value === '__new__') {
-                        setEditCustomCategory(true);
-                        handleEditCategoryChange('');
-                      } else {
-                        setEditCustomCategory(false);
-                        handleEditCategoryChange(e.target.value);
-                      }
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Select a category</option>
-                    {STOCK_CATEGORIES.map(category => (
-                      <option key={category} value={category}>{category}</option>
-                    ))}
-                    <option value="__new__">Create new category…</option>
-                  </select>
-                  {editCustomCategory && (
-                    <input
-                      type="text"
-                      value={editForm.category || ''}
-                      onChange={(e) => handleEditCategoryChange(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 mt-2"
-                      placeholder="New category name"
-                    />
-                  )}
-                  <p className="text-xs text-gray-500 mt-1">One primary category per stock.</p>
-                </div>
+                <TaxonomyMultiSelect
+                  label="Category"
+                  options={categoryOptions}
+                  selected={editForm.category ?? []}
+                  onChange={value => setEditForm({ ...editForm, category: value })}
+                  createPlaceholder="New category name"
+                />
+
+                <TaxonomyMultiSelect
+                  label="Region"
+                  options={regionOptions}
+                  selected={editForm.region ?? []}
+                  onChange={value => setEditForm({ ...editForm, region: value })}
+                  createPlaceholder="New region name"
+                  exclusiveValue="Global"
+                />
                 
                 {/* Shared Inputs — Common to All Cases */}
                 {/* The valuation metric and its base value are the same for
@@ -1870,6 +1904,7 @@ export default function StockWatchlist() {
                 >
                   <option value="ticker">Sort: Ticker</option>
                   <option value="category">Sort: Category</option>
+                  <option value="region">Sort: Region</option>
                   <option value="expectedReturn">Sort: Return</option>
                   <option value="cagr">Sort: CAGR</option>
                   <option value="buyTarget">Sort: Buy Target</option>
@@ -1941,6 +1976,28 @@ export default function StockWatchlist() {
                   <option key={category} value={category}>{category}</option>
                 ))}
               </select>
+
+              <select
+                value={regionFilter}
+                onChange={(e) => setRegionFilter(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 min-w-0"
+                title="Filter by region"
+              >
+                <option value="all">All Regions</option>
+                {availableRegions.map(region => (
+                  <option key={region} value={region}>{region}</option>
+                ))}
+              </select>
+
+              <button
+                type="button"
+                onClick={() => setShowManager(true)}
+                className="flex items-center justify-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 whitespace-nowrap"
+                title="Add, rename, merge or remove categories and regions"
+              >
+                <Tags className="w-4 h-4" />
+                Manage categories &amp; regions
+              </button>
             </div>
           </div>
         </div>
