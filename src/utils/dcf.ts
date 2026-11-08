@@ -102,8 +102,31 @@ export function getPerformanceColor(value: number, type: 'return' | 'cagr'): str
   }
   
   const threshold = type === 'cagr' ? 0.15 : 0.20; // 15% for CAGR, 20% for returns
-  
+
   if (value >= threshold) return 'text-green-600';
   if (value >= threshold * 0.5) return 'text-yellow-600';
   return 'text-red-600';
+}
+
+export type ValuationStatus = 'strong-buy' | 'buy' | 'hold' | 'overvalued';
+
+// Valuation status for an arbitrary price against a stock's fair value.
+// Same thresholds as the watchlist (StockWatchlist.tsx getValuationStatus):
+//   price <= 0.8x fair value -> Strong Buy
+//   price <= fair value      -> Buy
+//   price <= 1.2x fair value -> Hold
+//   otherwise                -> Overvalued
+// Shared so the scenario simulator grades simulated prices exactly like
+// the watchlist grades current prices.
+export function getValuationStatusForPrice(
+  price: number,
+  fairValue: number
+): { status: ValuationStatus; color: string; text: string } {
+  if (!fairValue || fairValue <= 0 || !price || price <= 0) {
+    return { status: 'hold', color: 'bg-gray-400', text: 'No fair value' };
+  }
+  if (price <= fairValue * 0.8) return { status: 'strong-buy', color: 'bg-green-600', text: 'Strong Buy' };
+  if (price <= fairValue) return { status: 'buy', color: 'bg-green-500', text: 'Buy' };
+  if (price <= fairValue * 1.2) return { status: 'hold', color: 'bg-yellow-500', text: 'Hold' };
+  return { status: 'overvalued', color: 'bg-red-600', text: 'Overvalued' };
 }
