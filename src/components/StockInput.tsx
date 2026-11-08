@@ -293,59 +293,70 @@ export default function StockInput({ onCalculate, loading }: StockInputProps) {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Valuation Multiple
-            </label>
-            <input
-              type="number"
-              value={formData.valuationMultiple}
-              onChange={(e) => handleInputChange('valuationMultiple', parseFloat(e.target.value))}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="e.g., 25"
-              step="0.1"
-              required
-            />
-          </div>
+        {/* Shared Inputs — Common to All Cases */}
+        {/* The valuation metric and its base value are the same for the
+            base, bear and bull cases, so they sit here once, above the
+            three case boxes, instead of inside any one of them. */}
+        <div className="border border-gray-200 bg-gray-50 rounded-lg p-4">
+          <h3 className="text-lg font-semibold text-gray-800 mb-1">Common to All Cases</h3>
+          <p className="text-xs text-gray-500 mb-4">
+            The valuation metric and its base value are the same for the base, bear and bull cases.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="min-w-0">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Valuation Metric
+              </label>
+              <select
+                value={formData.valuationMetric}
+                onChange={(e) => handleInputChange('valuationMetric', e.target.value)}
+                title={valuationMetrics.find(metric => metric.value === formData.valuationMetric)?.fullLabel ?? ''}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                {valuationMetrics.map(metric => (
+                  <option key={metric.value} value={metric.value}>
+                    {metric.label}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          <div className="min-w-0">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Valuation Metric
-            </label>
-            <select
-              value={formData.valuationMetric}
-              onChange={(e) => handleInputChange('valuationMetric', e.target.value)}
-              title={valuationMetrics.find(metric => metric.value === formData.valuationMetric)?.fullLabel ?? ''}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              {valuationMetrics.map(metric => (
-                <option key={metric.value} value={metric.value}>
-                  {metric.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Base Metric Per Share ({new Date().getFullYear()})
-            </label>
-            <input
-              type="number"
-              value={formData.baseMetricPerShare || ''}
-              onChange={(e) => handleInputChange('baseMetricPerShare', parseFloat(e.target.value))}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="e.g., 24.50"
-              step="0.01"
-              required
-            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Base Metric Per Share ({new Date().getFullYear()})
+              </label>
+              <input
+                type="number"
+                value={formData.baseMetricPerShare || ''}
+                onChange={(e) => handleInputChange('baseMetricPerShare', parseFloat(e.target.value))}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="e.g., 24.50"
+                step="0.01"
+                required
+              />
+            </div>
           </div>
         </div>
 
-        {/* Growth Rate Projections */}
-        <div>
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">5-Year Growth Rate Projections (%)</h3>
+        {/* Base Case */}
+        <div className="border rounded-lg p-4 border-blue-200 bg-blue-50">
+          <h3 className="text-lg font-semibold text-gray-800 mb-4">Base Case</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Valuation Multiple
+              </label>
+              <input
+                type="number"
+                value={formData.valuationMultiple}
+                onChange={(e) => handleInputChange('valuationMultiple', parseFloat(e.target.value))}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="e.g., 25"
+                step="0.1"
+                required
+              />
+            </div>
+          </div>
           <div className="grid grid-cols-5 gap-4">
             {formData.growthRates.map((rate, index) => (
               <div key={index}>

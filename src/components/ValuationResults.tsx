@@ -203,12 +203,17 @@ export default function ValuationResults({
         <div className="grid grid-cols-1 gap-6">
           <div className="space-y-3">
             <h4 className="text-lg font-medium text-gray-700">5-Year Projections</h4>
+            <p className="text-xs text-gray-500">
+              Projected {dcfInputs.valuationMetric} value by scenario — a case shows “—” until its growth rates and multiple are fully entered. Projected Price and Growth Rate are the base case's.
+            </p>
             <div className="overflow-x-auto">
               <table className="w-full border border-gray-200 rounded-lg">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Year</th>
-                    <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">{dcfInputs.valuationMetric} Value</th>
+                    <th className="px-4 py-2 text-left text-sm font-medium text-red-600">Bear {dcfInputs.valuationMetric}</th>
+                    <th className="px-4 py-2 text-left text-sm font-medium text-blue-600">Base {dcfInputs.valuationMetric}</th>
+                    <th className="px-4 py-2 text-left text-sm font-medium text-green-600">Bull {dcfInputs.valuationMetric}</th>
                     <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Projected Price</th>
                     <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Growth Rate</th>
                   </tr>
@@ -219,7 +224,13 @@ export default function ValuationResults({
                     return (
                     <tr key={index} className="hover:bg-gray-50">
                       <td className="px-4 py-2 text-sm font-medium text-gray-900">{currentYear + index + 1}</td>
-                      <td className="px-4 py-2 text-sm text-gray-800">${value.toFixed(2)}</td>
+                      <td className="px-4 py-2 text-sm text-red-600 font-medium">
+                        {bearResults ? `$${bearResults.projectedValues[index].toFixed(2)}` : '—'}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-blue-600 font-medium">${value.toFixed(2)}</td>
+                      <td className="px-4 py-2 text-sm text-green-600 font-medium">
+                        {bullResults ? `$${bullResults.projectedValues[index].toFixed(2)}` : '—'}
+                      </td>
                       <td className="px-4 py-2 text-sm text-blue-600 font-medium">{formatCurrency(results.projectedPrices[index])}</td>
                       <td className="px-4 py-2 text-sm text-gray-600">{dcfInputs.growthRates[index]}%</td>
                     </tr>
