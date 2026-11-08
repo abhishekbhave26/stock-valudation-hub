@@ -10,18 +10,42 @@ export function calculateDCF(inputs: DCFInputs): { results: DCFResults; warnings
       message: 'Desired return above 25% may be unrealistic for most stocks'
     });
   }
-  
-  if (inputs.growthRates.some(rate => rate > 5000)) {
+
+  // Growth rates are percentages (e.g. 15 = 15%). The old threshold here
+  // was 5000 while the message said 50%, so this warning could never fire
+  // on any realistic input. Fixed to 50 to match the message.
+  if (inputs.growthRates.some(rate => rate > 50)) {
     warnings.push({
       type: 'growth',
       message: 'Growth rates above 50% may be unsustainable long-term'
     });
   }
-  
-  if (inputs.valuationMultiple > 80) {
+
+  // The valuation multiple is applied to PROJECTED metric values, so it is
+  // a forward multiple — and the right sanity bar depends on the metric.
+  // A single 80x bar for every metric was wrong for that reason: the
+  // richest legitimate forward P/E in the watchlist is PLTR ~100x and HIMS
+  // ~86x (Oct 5, 2026 reference), so 80x flagged real inputs, while 80x
+  // P/S (richest real: PLTR ~74x) or 80x EV/EBITDA (richest real: AXON
+  // ~210x, itself distorted by depressed earnings) mean very different
+  // things. Thresholds below sit just above the richest real value of each
+  // metric in the watchlist, so genuine inputs never trip them but typos
+  // (e.g. an extra zero) still do. P/B is left at 80x: no watchlist data
+  // justifies a change, and 80x P/B only ever fires on absurd entries.
+  const MULTIPLE_WARNING_LIMITS: Record<DCFInputs['valuationMetric'], number> = {
+    'P/E': 150,
+    'P/FCF': 150,
+    'P/OCF': 150,
+    'P/S': 100,
+    'EV/Sales': 100,
+    'EV/EBITDA': 250,
+    'P/B': 80,
+  };
+  const multipleLimit = MULTIPLE_WARNING_LIMITS[inputs.valuationMetric] ?? 80;
+  if (inputs.valuationMultiple > multipleLimit) {
     warnings.push({
       type: 'multiple',
-      message: 'Valuation multiple above 80x may indicate overvaluation'
+      message: `${inputs.valuationMetric} multiple above ${multipleLimit}x is unusually high for a projected value — please double-check`
     });
   }
 
