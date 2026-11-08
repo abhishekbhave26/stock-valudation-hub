@@ -49,7 +49,14 @@ class StockPriceService {
   private readonly MAX_REQUESTS_PER_MINUTE = 55;
   private readonly MINUTE_WINDOW_MS = 60 * 1000;
   private readonly MAX_CONCURRENT_REQUESTS = 10;
-  private requestTimestamps: number[] = [];
+  // Two independent timestamp histories. The per-second burst limiter
+  // and the per-minute allowance MUST NOT share one array: the burst
+  // limiter prunes everything older than 1 second, which used to wipe
+  // the minute reservations as fetching proceeded, so the 55/min cap
+  // could never trip. Minute reservations live here for a full 60s;
+  // per-second fetch attempts are recorded separately.
+  private secondRequestTimestamps: number[] = [];
+  private minuteRequestTimestamps: number[] = [];
 
   constructor() {
     // Load cache from localStorage on initialization
@@ -85,11 +92,13 @@ class StockPriceService {
   private async waitForRateLimit(): Promise<void> {
     while (true) {
       const now = Date.now();
-      this.requestTimestamps = this.requestTimestamps.filter(timestamp => now - timestamp < 1000);
-      if (this.requestTimestamps.length < this.MAX_REQUESTS_PER_SECOND) {
+      this.secondRequestTimestamps = this.secondRequestTimestamps.filter(timestamp => now - timestamp < 1000);
+      if (this.secondRequestTimestamps.length < this.MAX_REQUESTS_PER_SECOND) {
+        // Record the granted attempt so the burst cap counts real fetches.
+        this.secondRequestTimestamps.push(now);
         return;
       }
-      const waitTime = 1000 - (now - this.requestTimestamps[0]);
+      const waitTime = 1000 - (now - this.secondRequestTimestamps[0]);
       await new Promise(resolve => setTimeout(resolve, Math.max(waitTime, 50)));
     }
   }
@@ -104,13 +113,13 @@ class StockPriceService {
    */
   private tryReserveMinuteSlot(): boolean {
     const now = Date.now();
-    this.requestTimestamps = this.requestTimestamps.filter(
+    this.minuteRequestTimestamps = this.minuteRequestTimestamps.filter(
       timestamp => now - timestamp < this.MINUTE_WINDOW_MS
     );
-    if (this.requestTimestamps.length >= this.MAX_REQUESTS_PER_MINUTE) {
+    if (this.minuteRequestTimestamps.length >= this.MAX_REQUESTS_PER_MINUTE) {
       return false;
     }
-    this.requestTimestamps.push(now);
+    this.minuteRequestTimestamps.push(now);
     return true;
   }
 
