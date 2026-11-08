@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlaskConical, Search, TrendingDown, TrendingUp, RotateCcw, Info } from 'lucide-react';
 import { SavedStock } from '../types';
 import { supabase } from '../lib/supabase';
