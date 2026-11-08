@@ -35,7 +35,16 @@ const getDisplayValuation = (stock: SavedStock, scenario: DCFScenarioName) => {
       projectedPrices: stock.dcf_inputs?.projectedPrices ?? null as number[] | null
     };
   }
-  const results = stock.dcf_inputs ? getScenarioResults(stock.dcf_inputs, scenario) : null;
+  // Bear/bull CAGR and total return must use the latest price, not the
+  // price stored in dcf_inputs when the case was entered: price refreshes
+  // write only saved_stocks.current_price, never dcf_inputs.currentPrice,
+  // so the stored price goes stale. Base is untouched — it already uses
+  // the stored fields, whose CAGR loadStocks recalculates from the latest
+  // price. Fall back to the stored price when the latest price is not a
+  // usable positive number, so a zero/missing price can never produce
+  // NaN or Infinity here.
+  const latestPrice = stock.currentPrice > 0 ? stock.currentPrice : stock.dcf_inputs.currentPrice;
+  const results = stock.dcf_inputs ? getScenarioResults({ ...stock.dcf_inputs, currentPrice: latestPrice }, scenario) : null;
   if (!results) {
     return {
       isSet: false,
