@@ -4,6 +4,18 @@ export interface StockData {
   lastUpdated: Date;
 }
 
+export type DCFScenarioName = 'bear' | 'base' | 'bull';
+
+/** Bear/bull case inputs, mirroring the base case: per-year earnings
+ *  growth rates (one per projection year) and a valuation multiple.
+ *  A scenario is only "set" when ALL five growth rates and the multiple
+ *  are finite numbers — anything partial is treated as unset, never
+ *  filled in from the base case. */
+export interface DCFScenarioInputs {
+  growthRates: number[];
+  valuationMultiple: number;
+}
+
 export interface DCFInputs {
   ticker: string;
   currentPrice: number;
@@ -13,8 +25,14 @@ export interface DCFInputs {
   desiredReturn: number;
   growthRates: number[];
   projectedPrices?: number[];
+  bearCase?: DCFScenarioInputs;
+  bullCase?: DCFScenarioInputs;
   notes?: string;
   investorRelationsLink?: string;
+  /** One primary category for the stock (e.g. "Big Tech", "AI Semiconductors").
+   *  Picked from a fixed list in the form, with a "create new category"
+   *  option; stored in the saved row's dcf_inputs JSONB. */
+  category?: string;
 }
 
 export interface DCFResults {
@@ -45,6 +63,9 @@ export interface SavedStock {
   updatedAt: Date;
   notes?: string;
   isFavorite?: boolean;
+  /** One primary category for the stock, read from dcf_inputs.category.
+   *  Empty string when the stock has no category yet. */
+  category?: string;
 }
 
 export interface PortfolioStock {

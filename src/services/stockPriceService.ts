@@ -21,14 +21,33 @@ interface GetPriceOptions {
   forceRefresh?: boolean;
 }
 
+/**
+ * What a single fetch attempt concluded. Callers use this to tell a
+ * rate-limit rejection (worth queuing for a later retry) apart from a
+ * genuinely unrecoverable failure (e.g. Finnhub returns no price data
+ * for a symbol, which no amount of retrying will fix).
+ */
+type PriceFetchOutcome = 'updated' | 'rate-limited' | 'failed';
+
+interface PriceFetchResult {
+  symbol: string;
+  price: StockPrice | null;
+  outcome: PriceFetchOutcome;
+}
+
 class StockPriceService {
   private cache: Map<string, CachedPrice> = new Map();
   private readonly CACHE_DURATION = 4 * 60 * 60 * 1000; // 4 hours in milliseconds
   private readonly API_KEY = import.meta.env.VITE_FINNHUB_API_KEY;
   private readonly BASE_URL = 'https://finnhub.io/api/v1';
-  
-  // Rate limiting - Finnhub allows 30 calls/second
+
+  // Rate limiting — Finnhub's free plan allows 60 calls/minute (the binding
+  // limit; the 30 calls/second ceiling is only a burst cap). The per-minute
+  // allowance is kept at 55 to leave headroom for calls made outside a
+  // bulk refresh (e.g. single-ticker lookups).
   private readonly MAX_REQUESTS_PER_SECOND = 10;
+  private readonly MAX_REQUESTS_PER_MINUTE = 55;
+  private readonly MINUTE_WINDOW_MS = 60 * 1000;
   private readonly MAX_CONCURRENT_REQUESTS = 10;
   private requestTimestamps: number[] = [];
 
@@ -68,7 +87,6 @@ class StockPriceService {
       const now = Date.now();
       this.requestTimestamps = this.requestTimestamps.filter(timestamp => now - timestamp < 1000);
       if (this.requestTimestamps.length < this.MAX_REQUESTS_PER_SECOND) {
-        this.requestTimestamps.push(now);
         return;
       }
       const waitTime = 1000 - (now - this.requestTimestamps[0]);
@@ -76,12 +94,38 @@ class StockPriceService {
     }
   }
 
+  /**
+   * Reserve one slot in the rolling 60-second window. Returns false when
+   * the free plan's per-minute allowance is exhausted — the caller must
+   * NOT make the HTTP call in that case, so no quota is wasted on a
+   * request that would come back 429. Reservation and the actual call
+   * happen within ~1s of each other, so the timestamp is a good proxy
+   * for the call time.
+   */
+  private tryReserveMinuteSlot(): boolean {
+    const now = Date.now();
+    this.requestTimestamps = this.requestTimestamps.filter(
+      timestamp => now - timestamp < this.MINUTE_WINDOW_MS
+    );
+    if (this.requestTimestamps.length >= this.MAX_REQUESTS_PER_MINUTE) {
+      return false;
+    }
+    this.requestTimestamps.push(now);
+    return true;
+  }
+
   private async rateLimitedFetch(url: string): Promise<Response> {
     await this.waitForRateLimit();
     return fetch(url);
   }
 
-  async getStockPrice(symbol: string, options: GetPriceOptions = {}): Promise<StockPrice | null> {
+  /**
+   * Fetch one price and report why it did (or did not) come back. Unlike
+   * the old behaviour, a 429 is NOT retried here: a retry inside the same
+   * 60-second window would 429 again and burn quota. Rate-limited symbols
+   * are the caller's to queue for a later retry, once the window clears.
+   */
+  async fetchPrice(symbol: string, options: GetPriceOptions = {}): Promise<PriceFetchResult> {
     const normalizedSymbol = symbol.toUpperCase();
     const { forceRefresh = false } = options;
     // Check cache first (an explicit refresh skips the cache so it always fetches live prices)
@@ -89,54 +133,60 @@ class StockPriceService {
     if (cached && this.isCacheValid(cached) && !forceRefresh) {
       return {
         symbol: normalizedSymbol,
-        price: cached.price,
-        timestamp: cached.timestamp,
-        source: cached.source
+        price: {
+          symbol: normalizedSymbol,
+          price: cached.price,
+          timestamp: cached.timestamp,
+          source: cached.source
+        },
+        outcome: 'updated'
       };
     }
 
     // If no API key, return null
     if (!this.API_KEY) {
       console.error('No Finnhub API key provided. Add VITE_FINNHUB_API_KEY to your .env file');
-      return null;
+      return { symbol: normalizedSymbol, price: null, outcome: 'failed' };
     }
-    
+
+    // Don't spend a call we know will be rejected: the per-minute window
+    // is exhausted, so this symbol goes back to the caller's queue.
+    if (!this.tryReserveMinuteSlot()) {
+      return { symbol: normalizedSymbol, price: null, outcome: 'rate-limited' };
+    }
+
     try {
       // Fetch from Finnhub API
       const url = `${this.BASE_URL}/quote?symbol=${normalizedSymbol}&token=${this.API_KEY}`;
-      let response: Response | null = null;
-      const maxRetries = 3;
-      for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
-        response = await this.rateLimitedFetch(url);
-        if (response.status !== 429) {
-          break;
-        }
-        const backoffMs = 250 * attempt;
-        await new Promise(resolve => setTimeout(resolve, backoffMs));
+      const response = await this.rateLimitedFetch(url);
+
+      if (response.status === 429) {
+        // The window was consumed by calls outside this service's view
+        // (or a burst); queue it for retry after the window clears.
+        console.warn(`Rate limited (429) fetching price for ${normalizedSymbol}`);
+        return { symbol: normalizedSymbol, price: null, outcome: 'rate-limited' };
       }
-      
-      if (!response) {
-        throw new Error('No response from Finnhub');
-      }
-      
+
       if (!response.ok) {
         console.error('API response not ok:', response.status, response.statusText);
-        throw new Error(`HTTP error! status: ${response.status}`);
+        return { symbol: normalizedSymbol, price: null, outcome: 'failed' };
       }
-      
+
       const data = await response.json();
       // Check for API errors
       if (data.error) {
         console.error('API returned error:', data.error);
-        throw new Error(data.error);
+        return { symbol: normalizedSymbol, price: null, outcome: 'failed' };
       }
-      
+
       // Finnhub returns current price in 'c' field
       if (!data.c || data.c === 0) {
+        // No usable price data (e.g. a listing Finnhub doesn't cover on
+        // this plan, such as a TSX symbol). Retrying will not help.
         console.error('Invalid price data:', data);
-        throw new Error('Invalid response format or symbol not found');
+        return { symbol: normalizedSymbol, price: null, outcome: 'failed' };
       }
-      
+
       const price = parseFloat(data.c);
       const timestamp = Date.now();
       // Cache the result
@@ -145,20 +195,24 @@ class StockPriceService {
         timestamp,
         source: 'Finnhub'
       };
-      
+
       this.cache.set(normalizedSymbol, cachedPrice);
       this.saveCacheToStorage();
-      
+
       return {
         symbol: normalizedSymbol,
-        price,
-        timestamp,
-        source: 'Finnhub'
+        price: {
+          symbol: normalizedSymbol,
+          price,
+          timestamp,
+          source: 'Finnhub'
+        },
+        outcome: 'updated'
       };
-      
+
     } catch (error) {
       console.error(`Failed to fetch price for ${normalizedSymbol}:`, error);
-      
+
       // If we have expired cache data, return it as fallback — but not on an
       // explicit refresh, so a failed live fetch surfaces as a failure
       // instead of silently serving a stale price.
@@ -166,18 +220,33 @@ class StockPriceService {
         console.warn(`Using expired cache data for ${normalizedSymbol}`);
         return {
           symbol: normalizedSymbol,
-          price: cached.price,
-          timestamp: cached.timestamp,
-          source: `${cached.source} (cached)`
+          price: {
+            symbol: normalizedSymbol,
+            price: cached.price,
+            timestamp: cached.timestamp,
+            source: `${cached.source} (cached)`
+          },
+          outcome: 'updated'
         };
       }
-      
-      return null;
+
+      return { symbol: normalizedSymbol, price: null, outcome: 'failed' };
     }
   }
 
-  async getMultipleStockPrices(symbols: string[], options: GetPriceOptions = {}): Promise<Map<string, StockPrice>> {
-    const results = new Map<string, StockPrice>();
+  async getStockPrice(symbol: string, options: GetPriceOptions = {}): Promise<StockPrice | null> {
+    const result = await this.fetchPrice(symbol, options);
+    return result.price;
+  }
+
+  /**
+   * Fetch prices for many symbols, keeping the per-symbol outcome so the
+   * caller can tell rate-limited symbols (queue them) from genuinely
+   * failed ones (surface them). Symbols the minute window has no room for
+   * are reported 'rate-limited' without an HTTP call being made.
+   */
+  async fetchPricesWithOutcomes(symbols: string[], options: GetPriceOptions = {}): Promise<Map<string, PriceFetchResult>> {
+    const results = new Map<string, PriceFetchResult>();
     const uniqueSymbols = [...new Set(symbols.map(s => s.toUpperCase()))];
 
     const queue = [...uniqueSymbols];
@@ -187,19 +256,24 @@ class StockPriceService {
         if (!symbol) {
           return;
         }
-        try {
-          const price = await this.getStockPrice(symbol, options);
-          if (price) {
-            results.set(symbol, price);
-          }
-        } catch (error) {
-          console.error(`Failed to fetch price for ${symbol}:`, error);
-        }
+        const result = await this.fetchPrice(symbol, options);
+        results.set(symbol, result);
       }
     });
 
     await Promise.all(workers);
-    
+
+    return results;
+  }
+
+  async getMultipleStockPrices(symbols: string[], options: GetPriceOptions = {}): Promise<Map<string, StockPrice>> {
+    const outcomes = await this.fetchPricesWithOutcomes(symbols, options);
+    const results = new Map<string, StockPrice>();
+    outcomes.forEach((result, symbol) => {
+      if (result.price) {
+        results.set(symbol, result.price);
+      }
+    });
     return results;
   }
 
@@ -220,4 +294,4 @@ class StockPriceService {
 }
 
 export const stockPriceService = new StockPriceService();
-export type { StockPrice, GetPriceOptions };
+export type { StockPrice, GetPriceOptions, PriceFetchResult, PriceFetchOutcome };
