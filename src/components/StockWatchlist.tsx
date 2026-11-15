@@ -520,6 +520,9 @@ export default function StockWatchlist() {
   // Guards the resume-on-reload effect so a persisted queue is only
   // picked up once per page load.
   const queueResumedRef = useRef(false);
+  // Ref for the Investment Notes textarea in the edit modal; the box
+  // auto-grows to fit its content (see resizeNotesTextarea below).
+  const notesTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const WATCHLIST_LIMIT = 500;
   // Short display labels keep the full metric name readable in the
@@ -1151,6 +1154,23 @@ export default function StockWatchlist() {
     });
   }, []);
 
+  // Auto-grow the Investment Notes textarea to fit its content, so
+  // the notes never scroll internally. Resetting to 'auto' first lets
+  // the box shrink as well as grow; rows={4} on the textarea keeps
+  // the minimum height at four lines.
+  const resizeNotesTextarea = useCallback(() => {
+    const el = notesTextareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, []);
+
+  // Resize whenever the edit modal opens or the notes change (typing,
+  // or opening a different stock).
+  useEffect(() => {
+    resizeNotesTextarea();
+  }, [editingStock, editForm?.notes, resizeNotesTextarea]);
+
   const handleNotesChange = (notes: string) => {
     if (!editForm) return;
     setEditForm({ ...editForm, notes });
@@ -1630,9 +1650,10 @@ export default function StockWatchlist() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Investment Notes</label>
                   <textarea
+                    ref={notesTextareaRef}
                     value={editForm.notes || ''}
                     onChange={(e) => handleNotesChange(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 overflow-hidden resize-none"
                     rows={4}
                     placeholder="Add your investment thesis, pros/cons, key metrics, or any other analysis notes..."
                   />
