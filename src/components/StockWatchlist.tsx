@@ -452,7 +452,7 @@ export default function StockWatchlist() {
   const { user } = useAuth();
   const [stocks, setStocks] = useState<SavedStock[]>([]);
   const [loading, setLoading] = useState(false);
-  const [sortBy, setSortBy] = useState<'ticker' | 'expectedReturn' | 'cagr' | 'buyTarget' | 'status' | 'lastUpdated' | 'valuation' | 'category' | 'region'>('cagr');
+  const [sortBy, setSortBy] = useState<'ticker' | 'expectedReturn' | 'dayChange' | 'cagr' | 'buyTarget' | 'status' | 'lastUpdated' | 'valuation' | 'category' | 'region'>('cagr');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   // Which DCF case the watchlist displays (base by default). Persisted so
   // the toggle survives reloads; base-case storage is untouched.
@@ -1289,6 +1289,26 @@ export default function StockWatchlist() {
         case 'expectedReturn':
           comparison = (bDisplay.expectedReturn ?? -Infinity) - (aDisplay.expectedReturn ?? -Infinity);
           break;
+        case 'dayChange': {
+          // Biggest gainers first in descending mode, biggest losers
+          // first in ascending mode. A stock with no prior-day close
+          // yet (day change is null) always sorts to the bottom, in
+          // both directions: the direction flip at the end of this
+          // comparator would otherwise lift nulls to the top in
+          // ascending mode, so the null ordering is pre-flipped here.
+          const aChange = getDayChange(priceHistory, a);
+          const bChange = getDayChange(priceHistory, b);
+          if (aChange === null && bChange === null) {
+            comparison = 0;
+          } else if (aChange === null) {
+            comparison = sortDirection === 'desc' ? 1 : -1;
+          } else if (bChange === null) {
+            comparison = sortDirection === 'desc' ? -1 : 1;
+          } else {
+            comparison = bChange - aChange;
+          }
+          break;
+        }
         case 'cagr':
           comparison = (bDisplay.cagr ?? -Infinity) - (aDisplay.cagr ?? -Infinity);
           break;
@@ -1324,7 +1344,7 @@ export default function StockWatchlist() {
       }
       
       return sortDirection === 'desc' ? comparison : -comparison;
-    }), [stocks, searchTerm, filterBy, categoryFilter, regionFilter, sortBy, sortDirection, displayScenario]);
+    }), [stocks, searchTerm, filterBy, categoryFilter, regionFilter, sortBy, sortDirection, displayScenario, priceHistory]);
 
   // Categories actually present on the watchlist, for the filter dropdown.
   // Built from the loaded rows so user-typed categories show up too.
@@ -1954,6 +1974,7 @@ export default function StockWatchlist() {
                     <option value="category">Sort: Category</option>
                     <option value="region">Sort: Region</option>
                     <option value="expectedReturn">Sort: Return</option>
+                    <option value="dayChange">Sort: Day Change</option>
                     <option value="cagr">Sort: CAGR</option>
                     <option value="buyTarget">Sort: Buy Target</option>
                     <option value="status">Sort: Status</option>
