@@ -452,7 +452,7 @@ export default function StockWatchlist() {
   const { user } = useAuth();
   const [stocks, setStocks] = useState<SavedStock[]>([]);
   const [loading, setLoading] = useState(false);
-  const [sortBy, setSortBy] = useState<'ticker' | 'expectedReturn' | 'cagr' | 'buyTarget' | 'status' | 'lastUpdated' | 'valuation' | 'category' | 'region'>('cagr');
+  const [sortBy, setSortBy] = useState<'ticker' | 'expectedReturn' | 'dayChange' | 'cagr' | 'buyTarget' | 'status' | 'lastUpdated' | 'valuation' | 'category' | 'region'>('cagr');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   // Which DCF case the watchlist displays (base by default). Persisted so
   // the toggle survives reloads; base-case storage is untouched.
@@ -520,6 +520,9 @@ export default function StockWatchlist() {
   // Guards the resume-on-reload effect so a persisted queue is only
   // picked up once per page load.
   const queueResumedRef = useRef(false);
+  // Ref for the Investment Notes textarea in the edit modal; the box
+  // auto-grows to fit its content (see resizeNotesTextarea below).
+  const notesTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const WATCHLIST_LIMIT = 500;
   // Short display labels keep the full metric name readable in the
@@ -1151,6 +1154,23 @@ export default function StockWatchlist() {
     });
   }, []);
 
+  // Auto-grow the Investment Notes textarea to fit its content, so
+  // the notes never scroll internally. Resetting to 'auto' first lets
+  // the box shrink as well as grow; rows={4} on the textarea keeps
+  // the minimum height at four lines.
+  const resizeNotesTextarea = useCallback(() => {
+    const el = notesTextareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, []);
+
+  // Resize whenever the edit modal opens or the notes change (typing,
+  // or opening a different stock).
+  useEffect(() => {
+    resizeNotesTextarea();
+  }, [editingStock, editForm?.notes, resizeNotesTextarea]);
+
   const handleNotesChange = (notes: string) => {
     if (!editForm) return;
     setEditForm({ ...editForm, notes });
@@ -1289,6 +1309,26 @@ export default function StockWatchlist() {
         case 'expectedReturn':
           comparison = (bDisplay.expectedReturn ?? -Infinity) - (aDisplay.expectedReturn ?? -Infinity);
           break;
+        case 'dayChange': {
+          // Biggest gainers first in descending mode, biggest losers
+          // first in ascending mode. A stock with no prior-day close
+          // yet (day change is null) always sorts to the bottom, in
+          // both directions: the direction flip at the end of this
+          // comparator would otherwise lift nulls to the top in
+          // ascending mode, so the null ordering is pre-flipped here.
+          const aChange = getDayChange(priceHistory, a);
+          const bChange = getDayChange(priceHistory, b);
+          if (aChange === null && bChange === null) {
+            comparison = 0;
+          } else if (aChange === null) {
+            comparison = sortDirection === 'desc' ? 1 : -1;
+          } else if (bChange === null) {
+            comparison = sortDirection === 'desc' ? -1 : 1;
+          } else {
+            comparison = bChange - aChange;
+          }
+          break;
+        }
         case 'cagr':
           comparison = (bDisplay.cagr ?? -Infinity) - (aDisplay.cagr ?? -Infinity);
           break;
@@ -1324,7 +1364,7 @@ export default function StockWatchlist() {
       }
       
       return sortDirection === 'desc' ? comparison : -comparison;
-    }), [stocks, searchTerm, filterBy, categoryFilter, regionFilter, sortBy, sortDirection, displayScenario]);
+    }), [stocks, searchTerm, filterBy, categoryFilter, regionFilter, sortBy, sortDirection, displayScenario, priceHistory]);
 
   // Categories actually present on the watchlist, for the filter dropdown.
   // Built from the loaded rows so user-typed categories show up too.
@@ -1610,9 +1650,10 @@ export default function StockWatchlist() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Investment Notes</label>
                   <textarea
+                    ref={notesTextareaRef}
                     value={editForm.notes || ''}
                     onChange={(e) => handleNotesChange(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 overflow-hidden resize-none"
                     rows={4}
                     placeholder="Add your investment thesis, pros/cons, key metrics, or any other analysis notes..."
                   />
@@ -1954,6 +1995,7 @@ export default function StockWatchlist() {
                     <option value="category">Sort: Category</option>
                     <option value="region">Sort: Region</option>
                     <option value="expectedReturn">Sort: Return</option>
+                    <option value="dayChange">Sort: Day Change</option>
                     <option value="cagr">Sort: CAGR</option>
                     <option value="buyTarget">Sort: Buy Target</option>
                     <option value="status">Sort: Status</option>
