@@ -5,7 +5,15 @@ import { supabase } from '../lib/supabase';
 import { formatCurrency, formatPercentage, getPerformanceColor, calculateDCF, getScenarioResults, normalizeScenarioInputs } from '../utils/dcf';
 import { DCFInputs, DCFScenarioName } from '../types';
 import { stockPriceService } from '../services/stockPriceService';
-import type { StockPrice } from '../services/stockPriceService';
+import {
+  enqueueRateLimitedSymbols,
+  loadPersistedPriceQueue,
+  persistWatchlistPrices,
+  refreshAllPrices,
+  savePersistedPriceQueue,
+  PRICE_QUEUE_RETRY_DELAY_MS
+} from '../services/priceRefreshService';
+import type { AppliedPriceUpdate, PersistedPriceQueue } from '../services/priceRefreshService';
 import { useAuth } from '../hooks/useAuth';
 import { useTaxonomy } from '../hooks/useTaxonomy';
 import TaxonomyManager from './TaxonomyManager';
@@ -134,47 +142,11 @@ const getRecentCloses = (
 // When a bulk refresh hits the free plan's 60-calls/minute cap, the
 // rate-limited tickers are queued here instead of failing: the queue
 // retries them in the background once the window clears, while the page
-// stays usable. The queue is persisted to localStorage so a page reload
-// mid-queue resumes it instead of losing the pending tickers. It only
-// runs while the page (or the daily automated run's tab) is open.
-const PRICE_QUEUE_STORAGE_KEY = 'stockPriceUpdateQueue';
-const PRICE_QUEUE_MAX_AGE_MS = 15 * 60 * 1000; // a queue older than this is stale — drop it
-const PRICE_QUEUE_RETRY_DELAY_MS = 60 * 1000; // wait out the Finnhub minute window
+// stays usable. Queue persistence lives in priceRefreshService so the
+// portfolio's refresh can enqueue into the same drain; it only runs
+// while the page (or the daily automated run's tab) is open.
 const PRICE_QUEUE_PACE_MS = 1000; // one queued fetch per second, stays under 60/min
 const PRICE_QUEUE_MAX_ATTEMPTS = 3; // attempts per ticker before it counts as failed
-
-interface PersistedPriceQueue {
-  symbols: string[];
-  attempts: Record<string, number>;
-  nextRetryAt: number; // epoch ms — earliest the queue may resume fetching
-  startedAt: number;
-}
-
-const loadPersistedPriceQueue = (): PersistedPriceQueue | null => {
-  try {
-    const stored = localStorage.getItem(PRICE_QUEUE_STORAGE_KEY);
-    if (!stored) return null;
-    const queue = JSON.parse(stored) as PersistedPriceQueue;
-    if (!queue || !Array.isArray(queue.symbols) || queue.symbols.length === 0) return null;
-    if (Date.now() - queue.startedAt > PRICE_QUEUE_MAX_AGE_MS) return null;
-    return queue;
-  } catch (error) {
-    console.warn('Failed to load pending price-update queue:', error);
-    return null;
-  }
-};
-
-const savePersistedPriceQueue = (queue: PersistedPriceQueue | null) => {
-  try {
-    if (queue === null) {
-      localStorage.removeItem(PRICE_QUEUE_STORAGE_KEY);
-    } else {
-      localStorage.setItem(PRICE_QUEUE_STORAGE_KEY, JSON.stringify(queue));
-    }
-  } catch (error) {
-    console.warn('Failed to save pending price-update queue:', error);
-  }
-};
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -833,105 +805,15 @@ export default function StockWatchlist() {
   // Write freshly fetched prices to Supabase (saved_stocks rows + one
   // price-history row each) and return the applied updates so the caller
   // can patch the visible rows in place. Used by the first wave and by
-  // each background-queue success.
+  // each background-queue success. The write path itself lives in
+  // priceRefreshService (the one shared refresh) — this stays a thin
+  // wrapper so the queue drain keeps its existing call shape.
   const persistPriceUpdates = useCallback(async (
-    priceMap: Map<string, StockPrice>,
+    priceMap: Map<string, number>,
     stocksSnapshot: SavedStock[]
-  ): Promise<{ id: string; ticker: string; currentPrice: number; expectedReturn: number; cagr: number }[]> => {
-    const priceUpdates: { id: string; ticker: string; currentPrice: number; expectedReturn: number; cagr: number }[] = [];
-
-    stocksSnapshot.forEach(stock => {
-      const normalizedTicker = stock.ticker.toUpperCase();
-      const priceData = priceMap.get(normalizedTicker);
-      if (!priceData) return;
-      let expectedReturn = stock.expectedReturn;
-      let cagr = stock.cagr;
-      if (stock.dcf_inputs && stock.dcf_inputs.projectedPrices && stock.dcf_inputs.projectedPrices.length >= 5) {
-        const terminalValue = stock.dcf_inputs.projectedPrices[4];
-        expectedReturn = stock.fairValue > 0
-          ? (priceData.price - stock.fairValue) / stock.fairValue
-          : stock.expectedReturn;
-        cagr = terminalValue > 0 && priceData.price > 0
-          ? Math.pow(terminalValue / priceData.price, 1 / 5) - 1
-          : stock.cagr;
-      }
-
-      priceUpdates.push({
-        id: stock.id!,
-        ticker: stock.ticker.toUpperCase(),
-        currentPrice: priceData.price,
-        expectedReturn,
-        cagr
-      });
-    });
-
-    // Batch update database - process in larger chunks to reduce round trips
-    const UPDATE_BATCH_SIZE = 100;
-    const successfullyUpdated: { id: string; ticker: string; currentPrice: number }[] = [];
-    for (let i = 0; i < priceUpdates.length; i += UPDATE_BATCH_SIZE) {
-      const batch = priceUpdates.slice(i, i + UPDATE_BATCH_SIZE);
-
-      const updatePromises = batch.map(async update => {
-        try {
-          const { error } = await supabase
-            .from('saved_stocks')
-            .update({
-              current_price: update.currentPrice,
-              expected_return: update.expectedReturn,
-              cagr: update.cagr,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', update.id);
-
-          if (error) throw error;
-          return { success: true, id: update.id };
-        } catch (error) {
-          console.error(`Failed to update watchlist price for stock ${update.id}:`, error);
-          return { success: false, id: update.id };
-        }
-      });
-
-      const batchResults = await Promise.allSettled(updatePromises);
-      batchResults.forEach((result, index) => {
-        if (result.status === 'fulfilled' && result.value.success) {
-          const update = batch[index];
-          successfullyUpdated.push({ id: update.id, ticker: update.ticker, currentPrice: update.currentPrice });
-        }
-      });
-
-      // Small delay between database update batches
-      if (i + UPDATE_BATCH_SIZE < priceUpdates.length) {
-        await sleep(100);
-      }
-    }
-
-    // Record one price-history row per successfully updated stock so the
-    // Day Change column and recent closes have data going forward.
-    // This must never block the price update itself: failures are logged
-    // and the refresh continues.
-    if (successfullyUpdated.length > 0 && user?.email) {
-      try {
-        const { error: historyError } = await supabase
-          .from('stock_price_history')
-          .insert(
-            successfullyUpdated.map(update => ({
-              user_email: user.email,
-              ticker: update.ticker,
-              price: update.currentPrice
-            }))
-          );
-
-        if (historyError) throw historyError;
-      } catch (historyError) {
-        console.error('Failed to record price history:', historyError);
-      }
-    }
-
-    // Return only the updates that actually landed, so the caller patches
-    // exactly the rows that changed.
-    return priceUpdates.filter(update =>
-      successfullyUpdated.some(done => done.id === update.id)
-    );
+  ): Promise<AppliedPriceUpdate[]> => {
+    if (!user?.email) return [];
+    return persistWatchlistPrices(user.email, priceMap, stocksSnapshot);
   }, [user]);
 
   // Drain a background queue: wait out the Finnhub minute window, then
@@ -974,7 +856,7 @@ export default function StockWatchlist() {
         const result = await stockPriceService.fetchPrice(symbol, { forceRefresh: true });
         if (result.outcome === 'updated' && result.price) {
           const applied = await persistPriceUpdates(
-            new Map([[symbol, result.price]]),
+            new Map([[symbol, result.price.price]]),
             stocksSnapshot
           );
           if (applied.length > 0) {
@@ -1042,63 +924,48 @@ export default function StockWatchlist() {
     // One refresh at a time: a running first wave or background queue owns
     // the rate-limit window until it finishes.
     if (stocks.length === 0 || updatingPrices || priceQueueActive) return;
+    if (!user?.email) return;
 
     const runId = ++queueRunIdRef.current;
     setUpdatingPrices(true);
     setPriceUpdateComplete(false);
     setFailedPriceTickers([]);
     setPendingPriceTickers([]);
-    const uniqueSymbols = [...new Set(stocks.map(stock => stock.ticker.toUpperCase()))];
     try {
-      // Explicit refresh: bypass the 4-hour local cache so this always fetches live prices.
-      // The service caps the first wave at the free plan's 60/min allowance
-      // and reports the rest as rate-limited instead of spending calls that
-      // would come back 429 — those go to the background queue below.
-      const outcomes = await stockPriceService.fetchPricesWithOutcomes(uniqueSymbols, { forceRefresh: true });
-      if (runId !== queueRunIdRef.current) return;
-
-      const priceMap = new Map<string, StockPrice>();
-      const rateLimitedSymbols: string[] = [];
-      const failedSymbols: string[] = [];
-      outcomes.forEach((result, symbol) => {
-        if (result.outcome === 'updated' && result.price) {
-          priceMap.set(symbol, result.price);
-        } else if (result.outcome === 'rate-limited') {
-          rateLimitedSymbols.push(symbol);
-        } else {
-          failedSymbols.push(symbol);
-        }
-      });
-
-      // Save the first wave immediately — the page looks refreshed at once
-      // and control returns without waiting out the rate-limit window.
-      await persistPriceUpdates(priceMap, stocks);
+      // One shared refresh for the watchlist and the portfolio: the
+      // service fetches live prices for the watchlist + any portfolio-only
+      // tickers (bypassing the 4-hour local cache), persists the watchlist
+      // rows (+ price history) and mirrors fresh prices into the stored
+      // portfolio fallback. The service caps the first wave at the free
+      // plan's 60/min allowance and reports the rest as rate-limited
+      // instead of spending calls that would come back 429 — those go to
+      // the background queue below.
+      const result = await refreshAllPrices(user.email, stocks);
       if (runId !== queueRunIdRef.current) return;
 
       // Reload watchlist to reflect changes
       await loadStocks();
 
-      if (rateLimitedSymbols.length > 0) {
+      if (result.rateLimited.length > 0) {
         // Rate-limited tickers go to the background queue instead of the
         // failure banner: they retry once the minute window clears, while
         // the page stays usable. The banner only ever sees tickers the
         // queue has given up on (plus any that failed outright here).
-        const queue: PersistedPriceQueue = {
-          symbols: rateLimitedSymbols,
-          attempts: Object.fromEntries(rateLimitedSymbols.map(symbol => [symbol, 1])),
-          nextRetryAt: Date.now() + PRICE_QUEUE_RETRY_DELAY_MS,
-          startedAt: Date.now()
-        };
-        savePersistedPriceQueue(queue);
-        setPendingPriceTickers(rateLimitedSymbols);
-        setPriceQueueActive(true);
-        // Fire and forget: the drain updates rows in place as it goes and
-        // reports completion (or the genuinely failed tickers) when done.
-        void drainPriceQueue(queue, stocks, runId, failedSymbols);
+        const queue = enqueueRateLimitedSymbols(result.rateLimited);
+        if (queue) {
+          setPendingPriceTickers(queue.symbols);
+          setPriceQueueActive(true);
+          // Fire and forget: the drain updates rows in place as it goes and
+          // reports completion (or the genuinely failed tickers) when done.
+          void drainPriceQueue(queue, stocks, runId, result.failed);
+        } else {
+          setFailedPriceTickers(result.failed);
+          setPriceUpdateComplete(result.failed.length === 0);
+        }
       } else {
         // Nothing queued: the refresh is already complete.
-        setFailedPriceTickers(failedSymbols);
-        setPriceUpdateComplete(failedSymbols.length === 0);
+        setFailedPriceTickers(result.failed);
+        setPriceUpdateComplete(result.failed.length === 0);
       }
     } catch (error) {
       console.error('Failed to update current prices:', error);
