@@ -94,7 +94,13 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
         }
 
         const enrichedStocks: PortfolioStock[] = data.map(stock => {
-          const currentPrice = resolvedPrices?.get(stock.ticker.toUpperCase())?.price
+          // Resolved prices are keyed by holding id (see
+          // resolvePortfolioPrices): two rows for one ticker keep their
+          // own stored / buy-price fallback instead of sharing the last
+          // one's. The ticker lookup is only a fallback for rows whose
+          // id was not in the resolved map.
+          const currentPrice = resolvedPrices?.get(stock.id)?.price
+            ?? resolvedPrices?.get(stock.ticker.toUpperCase())?.price
             ?? (stock.current_price || stock.buy_price);
           const totalValue = currentPrice * stock.quantity;
           const totalCost = stock.buy_price * stock.quantity;

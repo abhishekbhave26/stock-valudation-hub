@@ -116,6 +116,42 @@ type MonthEndRow = {
   activityPercent: number | null;
 };
 
+/**
+ * Collapse a snapshot's holdings to one row per ticker, summing shares,
+ * value, cost and weight. The naive `acc[holding.ticker] = holding`
+ * keeps only the last lot: two equal 10-share lots would show as
+ * 10 shares / 50% instead of 20 shares / 100%, and the Add / Reduce /
+ * Sold classification in buildComparisonRows would be wrong. The stored
+ * total_return is a ratio, so it is recomputed from the summed totals
+ * rather than added; buy price and current price become the
+ * quantity-weighted averages implied by those totals.
+ */
+function aggregateHoldingsByTicker(
+  holdings: SnapshotHolding[]
+): Record<string, SnapshotHolding> {
+  return holdings.reduce<Record<string, SnapshotHolding>>((acc, holding) => {
+    const existing = acc[holding.ticker];
+    if (!existing) {
+      acc[holding.ticker] = { ...holding };
+      return acc;
+    }
+    const quantity = existing.quantity + holding.quantity;
+    const totalValue = existing.total_value + holding.total_value;
+    const totalCost = existing.total_cost + holding.total_cost;
+    acc[holding.ticker] = {
+      ...existing,
+      quantity,
+      buy_price: quantity > 0 ? totalCost / quantity : existing.buy_price,
+      current_price: quantity > 0 ? totalValue / quantity : existing.current_price,
+      total_value: totalValue,
+      total_cost: totalCost,
+      total_return: totalCost > 0 ? (totalValue - totalCost) / totalCost : 0,
+      weight_percent: existing.weight_percent + holding.weight_percent
+    };
+    return acc;
+  }, {});
+}
+
 type MonthEndSummary = {
   key: string;
   label: string;
@@ -377,16 +413,10 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
   const baseHoldings = holdingsBySnapshotId[baseSnapshotId] ?? [];
   const compareHoldings = holdingsBySnapshotId[compareSnapshotId] ?? [];
   const baseHoldingsByTicker = useMemo(() => {
-    return baseHoldings.reduce<Record<string, SnapshotHolding>>((acc, holding) => {
-      acc[holding.ticker] = holding;
-      return acc;
-    }, {});
+    return aggregateHoldingsByTicker(baseHoldings);
   }, [baseHoldings]);
   const compareHoldingsByTicker = useMemo(() => {
-    return compareHoldings.reduce<Record<string, SnapshotHolding>>((acc, holding) => {
-      acc[holding.ticker] = holding;
-      return acc;
-    }, {});
+    return aggregateHoldingsByTicker(compareHoldings);
   }, [compareHoldings]);
   const snapshotComparisonRows = useMemo(() => {
     if (!baseSnapshot || !compareSnapshot) {
@@ -483,11 +513,8 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
       const priorGroup = byMonth.get(priorKey);
       const priorSnapshot = priorGroup ? priorGroup[0] : null;
 
-      const byTicker = (snapshotId: string) => (holdingsBySnapshotId[snapshotId] ?? [])
-        .reduce<Record<string, SnapshotHolding>>((acc, holding) => {
-          acc[holding.ticker] = holding;
-          return acc;
-        }, {});
+      const byTicker = (snapshotId: string) =>
+        aggregateHoldingsByTicker(holdingsBySnapshotId[snapshotId] ?? []);
       const endByTicker = byTicker(monthEndSnapshot.id);
       const startByTicker = priorSnapshot ? byTicker(priorSnapshot.id) : {};
 

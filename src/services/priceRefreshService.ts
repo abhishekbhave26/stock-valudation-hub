@@ -178,6 +178,10 @@ export async function getWatchlistRows(userEmail: string): Promise<WatchlistPric
  * the last-resort fallback (and what PortfolioAnalytics reads directly),
  * so keeping it fresh is what keeps that tab correct — the displayed
  * portfolio price is still derived from the watchlist, not stored.
+ * Prices in priceMap for tickers with no watchlist row (portfolio-only
+ * tickers, e.g. a successful background-queue retry) are mirrored too,
+ * so the queue drain never reports completion while the stored
+ * fallback for such a ticker stays stale.
  * The mirror is best effort: a failure is logged and never blocks the
  * watchlist update.
  */
@@ -274,11 +278,25 @@ export async function persistWatchlistPrices(
     } catch (historyError) {
       console.error('Failed to record price history:', historyError);
     }
+  }
 
-    // Mirror the applied prices into the stored portfolio fallback (see
-    // the function comment). Best effort — never throws.
-    const mirrored = new Map<string, number>();
-    successfullyUpdated.forEach(update => mirrored.set(update.ticker, update.currentPrice));
+  // Mirror the applied prices into the stored portfolio fallback (see
+  // the function comment). Best effort — never throws.
+  // A portfolio-only ticker has no watchlist row, so a successful retry
+  // of one lands in priceMap but never in successfullyUpdated: without
+  // the extra mirror below, the queue drain would remove the ticker and
+  // report completion while the stored fallback stays stale
+  // (PortfolioAnalytics reads it directly).
+  const mirrored = new Map<string, number>();
+  successfullyUpdated.forEach(update => mirrored.set(update.ticker, update.currentPrice));
+  const watchlistTickers = new Set(stocksSnapshot.map(stock => stock.ticker.toUpperCase()));
+  priceMap.forEach((price, ticker) => {
+    const normalizedTicker = ticker.toUpperCase();
+    if (!watchlistTickers.has(normalizedTicker) && !mirrored.has(normalizedTicker)) {
+      mirrored.set(normalizedTicker, price);
+    }
+  });
+  if (mirrored.size > 0 && userEmail) {
     await mirrorPricesToPortfolio(userEmail, mirrored);
   }
 
@@ -334,6 +352,7 @@ export interface ResolvedHoldingPrice {
 }
 
 export interface PortfolioHoldingInput {
+  id?: string;
   ticker: string;
   current_price?: number | null;
   buy_price: number;
@@ -350,6 +369,13 @@ export interface PortfolioHoldingInput {
  * the holding then falls through to its stored price, exactly as the
  * forceRefresh contract intends. Without forceRefresh (plain loads),
  * the cached price is used, matching the portfolio's previous behavior.
+ *
+ * Results are keyed by holding id (falling back to the ticker when a
+ * holding has no id), not by ticker: the shared market quotes above
+ * are deduplicated by ticker, but each holding's stored / buy-price
+ * fallback is applied to that holding only. Keying by ticker would let
+ * the last of several same-ticker holdings overwrite the fallback for
+ * all of them.
  */
 export async function resolvePortfolioPrices(
   holdings: PortfolioHoldingInput[],
@@ -374,22 +400,23 @@ export async function resolvePortfolioPrices(
   const resolved = new Map<string, ResolvedHoldingPrice>();
   holdings.forEach(holding => {
     const ticker = holding.ticker.toUpperCase();
+    const key = holding.id ?? ticker;
     const watchlistPrice = watchlistPrices.get(ticker);
     if (watchlistPrice !== undefined) {
-      resolved.set(ticker, { price: watchlistPrice, source: 'watchlist' });
+      resolved.set(key, { price: watchlistPrice, source: 'watchlist' });
       return;
     }
     const finnhubPrice = fetched.get(ticker);
     if (finnhubPrice !== undefined) {
-      resolved.set(ticker, { price: finnhubPrice, source: 'finnhub' });
+      resolved.set(key, { price: finnhubPrice, source: 'finnhub' });
       return;
     }
     const stored = Number(holding.current_price);
     if (Number.isFinite(stored) && stored > 0) {
-      resolved.set(ticker, { price: stored, source: 'stored' });
+      resolved.set(key, { price: stored, source: 'stored' });
       return;
     }
-    resolved.set(ticker, { price: Number(holding.buy_price) || 0, source: 'buy-price' });
+    resolved.set(key, { price: Number(holding.buy_price) || 0, source: 'buy-price' });
   });
   return resolved;
 }
