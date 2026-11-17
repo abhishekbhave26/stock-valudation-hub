@@ -15,6 +15,17 @@ import type { ResolvedHoldingPrice } from '../services/priceRefreshService';
 import { useAuth } from '../hooks/useAuth';
 import { downloadCsv } from '../utils/csv';
 
+// CAGR annualizes the return since purchase, so it is only meaningful
+// once a holding has been held long enough for annualizing to make
+// sense. Below this, a few days of return annualizes into absurd
+// figures (CLS showed 52,659,478% one day after purchase). Holdings
+// younger than this show no CAGR. Note the stored purchase date sits
+// one day later than the displayed date (UTC-midnight storage,
+// Pacific rendering), so the measured holding period is a day short —
+// negligible at 30 days.
+const MIN_CAGR_HOLDING_DAYS = 30;
+const MIN_CAGR_YEARS = MIN_CAGR_HOLDING_DAYS / 365.25;
+
 type PortfolioTrackerProps = {
   isDarkMode?: boolean;
 };
@@ -100,10 +111,14 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
           const totalCost = stock.buy_price * stock.quantity;
           const totalReturn = totalCost > 0 ? (totalValue - totalCost) / totalCost : 0;
           
-          // Calculate CAGR
+          // Calculate CAGR — only once the holding is at least 30 days
+          // old. Annualizing a return earned over days produces
+          // meaningless figures, so younger holdings get no CAGR.
           const purchaseDate = new Date(stock.purchase_date);
           const yearsDiff = (Date.now() - purchaseDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
-          const cagr = yearsDiff > 0 ? Math.pow(currentPrice / stock.buy_price, 1 / yearsDiff) - 1 : 0;
+          const cagr = yearsDiff >= MIN_CAGR_YEARS
+            ? Math.pow(currentPrice / stock.buy_price, 1 / yearsDiff) - 1
+            : undefined;
 
           return {
             ...stock,
@@ -372,7 +387,7 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
       const positionTotalReturn = resolvedBuyPrice > 0
         ? (totalValue - resolvedBuyPrice * stock.quantity) / (resolvedBuyPrice * stock.quantity)
         : 0;
-      const cagr = stock.cagr ?? 0;
+      const cagr = stock.cagr;
 
       return {
         Ticker: stock.ticker,
@@ -382,10 +397,10 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
         'Total Value': totalValue,
         'Portfolio %': portfolioPercent,
         'Total Return (%)': positionTotalReturn * 100,
-        'CAGR (%)': cagr * 100,
+        'CAGR (%)': cagr == null ? '' : cagr * 100,
         'Purchase Date': format(stock.purchaseDate, 'yyyy-MM-dd'),
         'Portfolio Total Return (%)': totalReturn * 100,
-        'Portfolio CAGR (%)': portfolioCAGR * 100
+        'Portfolio CAGR (%)': portfolioCAGR == null ? '' : portfolioCAGR * 100
       };
     });
 
@@ -424,9 +439,11 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
   const totalCost = portfolioStocks.reduce((sum, stock) => sum + (stock.buy_price * stock.quantity), 0);
   const totalReturn = totalCost > 0 ? (totalPortfolioValue - totalCost) / totalCost : 0;
 
-  // Calculate portfolio-wide CAGR
-  const portfolioCAGR = (() => {
-    if (portfolioStocks.length === 0 || totalCost === 0) return 0;
+  // Calculate portfolio-wide CAGR — gated the same way: the
+  // cost-weighted average holding period must be at least 30 days,
+  // otherwise annualizing the portfolio return is meaningless.
+  const portfolioCAGR: number | undefined = (() => {
+    if (portfolioStocks.length === 0 || totalCost === 0) return undefined;
     
     // Calculate weighted average holding period
     let totalWeightedYears = 0;
@@ -443,9 +460,9 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
     });
     
     const avgYears = totalWeight > 0 ? totalWeightedYears / totalWeight : 0;
-    
-    if (avgYears <= 0) return 0;
-    
+
+    if (avgYears < MIN_CAGR_YEARS) return undefined;
+
     // Calculate CAGR: (Ending Value / Beginning Value)^(1/years) - 1
     return Math.pow(totalPortfolioValue / totalCost, 1 / avgYears) - 1;
   })();
@@ -507,8 +524,11 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
         
             <div className="mt-4">
               <div className="text-center p-4 bg-purple-50 rounded-lg">
-                <div className={`text-2xl font-bold ${portfolioCAGR >= 0 ? 'text-purple-600' : 'text-red-600'}`}>
-                  {formatPercentage(portfolioCAGR)}
+                <div
+                  className={`text-2xl font-bold ${portfolioCAGR == null ? 'text-gray-500' : portfolioCAGR >= 0 ? 'text-purple-600' : 'text-red-600'}`}
+                  title={portfolioCAGR == null ? 'CAGR shows once holdings average at least 30 days' : undefined}
+                >
+                  {portfolioCAGR == null ? '—' : formatPercentage(portfolioCAGR)}
                 </div>
                 <p className="text-sm text-gray-600">Portfolio CAGR</p>
                 <p className="text-xs text-gray-500 mt-1">Weighted by investment amount</p>
@@ -806,8 +826,11 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
                         </div>
                         <div className="flex justify-between items-center mt-1">
                           <span className="text-sm text-gray-600">CAGR:</span>
-                          <span className={`font-bold ${(stock.cagr || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {formatPercentage(stock.cagr || 0)}
+                          <span
+                            className={`font-bold ${stock.cagr == null ? 'text-gray-500' : stock.cagr >= 0 ? 'text-green-600' : 'text-red-600'}`}
+                            title={stock.cagr == null ? 'CAGR shows once a holding is at least 30 days old' : undefined}
+                          >
+                            {stock.cagr == null ? '—' : formatPercentage(stock.cagr)}
                           </span>
                         </div>
                       </div>
@@ -870,8 +893,11 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`text-sm font-medium ${(stock.cagr || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {formatPercentage(stock.cagr || 0)}
+                          <span
+                            className={`text-sm font-medium ${stock.cagr == null ? 'text-gray-500' : stock.cagr >= 0 ? 'text-green-600' : 'text-red-600'}`}
+                            title={stock.cagr == null ? 'CAGR shows once a holding is at least 30 days old' : undefined}
+                          >
+                            {stock.cagr == null ? '—' : formatPercentage(stock.cagr)}
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
