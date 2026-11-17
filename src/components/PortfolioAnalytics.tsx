@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BarChart3, TrendingUp, Wallet, TrendingDown, Activity } from 'lucide-react';
+import { BarChart3, TrendingUp, Wallet, TrendingDown, Activity, Calendar } from 'lucide-react';
 import { PortfolioStock } from '../types';
 import { supabase } from '../lib/supabase';
 import { formatCurrency, formatPercentage } from '../utils/dcf';
@@ -32,6 +32,99 @@ type SnapshotHolding = {
   weight_percent: number;
 };
 
+type ComparisonRow = {
+  ticker: string;
+  status: string;
+  startQty: number;
+  endQty: number;
+  qtyChange: number;
+  qtyChangePercent: number | null;
+  startPrice: number;
+  endPrice: number;
+  priceChange: number;
+  priceChangePercent: number | null;
+  priceImpactOnly: number;
+  valueChange: number;
+  weightChange: number;
+};
+
+/** Per-ticker comparison between two snapshots' holdings, keyed by ticker.
+ *  Shared by the Snapshot Comparison section and the Month-End Summary so
+ *  both classify buys / adds / trims / sells the same way. */
+function buildComparisonRows(
+  startByTicker: Record<string, SnapshotHolding>,
+  endByTicker: Record<string, SnapshotHolding>
+): ComparisonRow[] {
+  const tickers = Array.from(new Set([
+    ...Object.keys(startByTicker),
+    ...Object.keys(endByTicker)
+  ])).sort();
+
+  return tickers.map(ticker => {
+    const startHolding = startByTicker[ticker];
+    const endHolding = endByTicker[ticker];
+    const startQty = startHolding?.quantity ?? 0;
+    const endQty = endHolding?.quantity ?? 0;
+    const startPrice = startHolding?.current_price ?? 0;
+    const endPrice = endHolding?.current_price ?? 0;
+    const qtyChange = endQty - startQty;
+    const qtyChangePercent = startQty > 0 ? qtyChange / startQty : null;
+    const priceChange = endPrice - startPrice;
+    const priceChangePercent = startPrice > 0 ? priceChange / startPrice : null;
+    const priceImpactOnly = priceChange * startQty;
+    const valueChange = (endHolding?.total_value ?? 0) - (startHolding?.total_value ?? 0);
+    const weightChange = (endHolding?.weight_percent ?? 0) - (startHolding?.weight_percent ?? 0);
+
+    let status = 'Unchanged';
+    if (!startHolding && endHolding) {
+      status = 'New Position';
+    } else if (startHolding && !endHolding) {
+      status = 'Sold Out';
+    } else if (qtyChange > 0) {
+      status = 'Added';
+    } else if (qtyChange < 0) {
+      status = 'Trimmed';
+    } else if (priceChange !== 0) {
+      status = priceChange > 0 ? 'Price Up' : 'Price Down';
+    }
+
+    return {
+      ticker,
+      status,
+      startQty,
+      endQty,
+      qtyChange,
+      qtyChangePercent,
+      startPrice,
+      endPrice,
+      priceChange,
+      priceChangePercent,
+      priceImpactOnly,
+      valueChange,
+      weightChange
+    };
+  });
+}
+
+type MonthEndRow = {
+  ticker: string;
+  /** Weight at month-end; null for positions sold during the month. */
+  weightPercent: number | null;
+  shares: number;
+  activity: 'Buy' | 'Add' | 'Reduce' | 'Sold' | '—';
+  /** Share-count change vs the prior month-end, for Add / Reduce. */
+  activityPercent: number | null;
+};
+
+type MonthEndSummary = {
+  key: string;
+  label: string;
+  monthEndSnapshot: Snapshot;
+  priorSnapshot: Snapshot | null;
+  returnVsPrior: number | null;
+  rows: MonthEndRow[];
+};
+
 export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnalyticsProps) {
   const { user } = useAuth();
   const [portfolioStocks, setPortfolioStocks] = useState<PortfolioStock[]>([]);
@@ -48,6 +141,9 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
     key: 'valueChange',
     direction: 'desc'
   });
+  // Month-End Summary: null means "default" — the most recent month is
+  // expanded; '' means every month is collapsed.
+  const [expandedMonthKey, setExpandedMonthKey] = useState<string | null>(null);
 
   useEffect(() => {
     loadPortfolio();
@@ -288,55 +384,7 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
     if (!baseSnapshot || !compareSnapshot) {
       return [];
     }
-    const tickers = Array.from(new Set([
-      ...Object.keys(baseHoldingsByTicker),
-      ...Object.keys(compareHoldingsByTicker)
-    ])).sort();
-
-    return tickers.map(ticker => {
-      const startHolding = baseHoldingsByTicker[ticker];
-      const endHolding = compareHoldingsByTicker[ticker];
-      const startQty = startHolding?.quantity ?? 0;
-      const endQty = endHolding?.quantity ?? 0;
-      const startPrice = startHolding?.current_price ?? 0;
-      const endPrice = endHolding?.current_price ?? 0;
-      const qtyChange = endQty - startQty;
-      const qtyChangePercent = startQty > 0 ? qtyChange / startQty : null;
-      const priceChange = endPrice - startPrice;
-      const priceChangePercent = startPrice > 0 ? priceChange / startPrice : null;
-      const priceImpactOnly = priceChange * startQty;
-      const valueChange = (endHolding?.total_value ?? 0) - (startHolding?.total_value ?? 0);
-      const weightChange = (endHolding?.weight_percent ?? 0) - (startHolding?.weight_percent ?? 0);
-
-      let status = 'Unchanged';
-      if (!startHolding && endHolding) {
-        status = 'New Position';
-      } else if (startHolding && !endHolding) {
-        status = 'Sold Out';
-      } else if (qtyChange > 0) {
-        status = 'Added';
-      } else if (qtyChange < 0) {
-        status = 'Trimmed';
-      } else if (priceChange !== 0) {
-        status = priceChange > 0 ? 'Price Up' : 'Price Down';
-      }
-
-      return {
-        ticker,
-        status,
-        startQty,
-        endQty,
-        qtyChange,
-        qtyChangePercent,
-        startPrice,
-        endPrice,
-        priceChange,
-        priceChangePercent,
-        priceImpactOnly,
-        valueChange,
-        weightChange
-      };
-    });
+    return buildComparisonRows(baseHoldingsByTicker, compareHoldingsByTicker);
   }, [baseHoldingsByTicker, compareHoldingsByTicker, baseSnapshot, compareSnapshot]);
   const sortedSnapshotComparisonRows = useMemo(() => {
     const rows = [...snapshotComparisonRows];
@@ -393,6 +441,100 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
     });
     return summary;
   }, [snapshotComparisonRows]);
+  /** One summary per month that has snapshot data, newest first.
+   *  Month-end is the LAST snapshot taken that month (snapshots load
+   *  newest-first, so it is the first snapshot in the month's group);
+   *  the prior month-end is the last snapshot of the previous calendar
+   *  month. Months with no snapshot are skipped entirely — a month
+   *  whose previous calendar month has no snapshot is the first month
+   *  and shows no activity / return (nothing is invented). Activity is
+   *  the share-count change vs the prior month-end, in 13F style:
+   *  Buy (new position), Add x% / Reduce x%, Sold (gone at month-end). */
+  const monthEndSummaries = useMemo<MonthEndSummary[]>(() => {
+    if (snapshots.length === 0) {
+      return [];
+    }
+    const byMonth = new Map<string, Snapshot[]>();
+    snapshots.forEach(snapshot => {
+      const key = format(new Date(snapshot.snapshot_at), 'yyyy-MM');
+      const group = byMonth.get(key);
+      if (group) {
+        group.push(snapshot);
+      } else {
+        byMonth.set(key, [snapshot]);
+      }
+    });
+    const monthKeys = [...byMonth.keys()].sort().reverse();
+    return monthKeys.map(key => {
+      const group = byMonth.get(key)!;
+      const monthEndSnapshot = group[0];
+      const [year, month] = key.split('-').map(Number);
+      // Previous calendar month (Date months are 0-based, so the prior
+      // month's index is month - 2).
+      const priorKey = format(new Date(year, month - 2, 1), 'yyyy-MM');
+      const priorGroup = byMonth.get(priorKey);
+      const priorSnapshot = priorGroup ? priorGroup[0] : null;
+
+      const byTicker = (snapshotId: string) => (holdingsBySnapshotId[snapshotId] ?? [])
+        .reduce<Record<string, SnapshotHolding>>((acc, holding) => {
+          acc[holding.ticker] = holding;
+          return acc;
+        }, {});
+      const endByTicker = byTicker(monthEndSnapshot.id);
+      const startByTicker = priorSnapshot ? byTicker(priorSnapshot.id) : {};
+
+      const rows: MonthEndRow[] = buildComparisonRows(startByTicker, endByTicker).map(row => {
+        let activity: MonthEndRow['activity'];
+        let activityPercent: number | null = null;
+        if (!priorSnapshot) {
+          activity = '—';
+        } else if (row.status === 'New Position') {
+          activity = 'Buy';
+        } else if (row.status === 'Sold Out') {
+          activity = 'Sold';
+        } else if (row.status === 'Added') {
+          activity = 'Add';
+          activityPercent = row.qtyChangePercent;
+        } else if (row.status === 'Trimmed') {
+          activity = 'Reduce';
+          activityPercent = row.qtyChangePercent;
+        } else {
+          activity = '—';
+        }
+        const endHolding = endByTicker[row.ticker];
+        return {
+          ticker: row.ticker,
+          weightPercent: endHolding ? endHolding.weight_percent : null,
+          shares: row.endQty,
+          activity,
+          activityPercent
+        };
+      });
+
+      // Current holdings first by weight, sold positions last.
+      rows.sort((a, b) => (b.weightPercent ?? -1) - (a.weightPercent ?? -1));
+
+      const returnVsPrior = priorSnapshot && priorSnapshot.total_value > 0
+        ? (monthEndSnapshot.total_value - priorSnapshot.total_value) / priorSnapshot.total_value
+        : null;
+
+      return {
+        key,
+        label: format(new Date(monthEndSnapshot.snapshot_at), 'MMMM yyyy'),
+        monthEndSnapshot,
+        priorSnapshot,
+        returnVsPrior,
+        rows
+      };
+    });
+  }, [snapshots, holdingsBySnapshotId]);
+  const resolvedExpandedMonthKey = expandedMonthKey ?? monthEndSummaries[0]?.key ?? null;
+  const toggleMonthExpanded = (key: string) => {
+    setExpandedMonthKey(prev => {
+      const current = prev ?? monthEndSummaries[0]?.key ?? null;
+      return current === key ? '' : key;
+    });
+  };
   const snapshotPeriodMetrics = useMemo(() => {
     if (!baseSnapshot || !compareSnapshot) {
       return {
@@ -1136,6 +1278,91 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
             </p>
           </>
         )}
+      </div>
+
+      {/* Month-End Summary */}
+      <div className="bg-white rounded-xl shadow-lg p-6">
+        <div className="flex items-center gap-3 mb-2">
+          <Calendar className="w-5 h-5 text-blue-600" />
+          <div>
+            <h3 className="text-lg font-semibold text-gray-800">Month-End Summary</h3>
+            <p className="text-xs text-gray-500">One row per month, from the last snapshot of each month — holdings, weights and activity vs the prior month-end.</p>
+          </div>
+        </div>
+        {snapshots.length === 0 ? (
+          <p className="text-sm text-gray-500 mt-2">No snapshots yet. Create one from the Portfolio Tracker to capture your holdings.</p>
+        ) : (
+          <div className="mt-4 space-y-3">
+            {monthEndSummaries.map(summary => {
+              const isExpanded = resolvedExpandedMonthKey === summary.key;
+              const holdingCount = summary.rows.filter(row => row.activity !== 'Sold').length;
+              return (
+                <div key={summary.key} className="border border-gray-200 rounded-lg overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => toggleMonthExpanded(summary.key)}
+                    className="w-full flex items-center justify-between gap-4 px-4 py-3 bg-gray-50 hover:bg-gray-100 text-left"
+                  >
+                    <span className="flex items-center gap-3 min-w-0">
+                      <span className="text-gray-500 text-sm">{isExpanded ? '▾' : '▸'}</span>
+                      <span className="font-semibold text-gray-800">{summary.label}</span>
+                      <span className="text-xs text-gray-500">as of {format(new Date(summary.monthEndSnapshot.snapshot_at), 'MMM dd, yyyy HH:mm')}</span>
+                    </span>
+                    <span className="flex items-center gap-5 text-sm shrink-0">
+                      <span className="text-gray-700 font-medium">{formatCurrency(summary.monthEndSnapshot.total_value)}</span>
+                      <span className="text-gray-500">{holdingCount} stocks</span>
+                      <span className="flex items-center gap-1">
+                        <span className="text-xs text-gray-400">Return</span>
+                        <span className={`font-medium ${summary.returnVsPrior === null ? 'text-gray-500' : summary.returnVsPrior >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {summary.returnVsPrior === null ? '—' : formatPercentage(summary.returnVsPrior)}
+                        </span>
+                      </span>
+                    </span>
+                  </button>
+                  {isExpanded && (
+                    summary.rows.length === 0 ? (
+                      <p className="text-sm text-gray-500 px-4 py-3">No holdings captured for this snapshot.</p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-gray-50 text-left">
+                            <tr>
+                              <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
+                              <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">% of Portfolio</th>
+                              <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Recent Activity</th>
+                              <th className="px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Shares</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-200">
+                            {summary.rows.map(row => (
+                              <tr key={row.ticker}>
+                                <td className="px-4 py-2 text-gray-900 font-medium">{row.ticker}</td>
+                                <td className="px-4 py-2 text-blue-600 font-medium">
+                                  {row.weightPercent === null ? '—' : `${row.weightPercent.toFixed(2)}%`}
+                                </td>
+                                <td className={`px-4 py-2 font-medium ${row.activity === 'Buy' || row.activity === 'Add' ? 'text-green-600' : row.activity === 'Reduce' || row.activity === 'Sold' ? 'text-red-600' : 'text-gray-500'}`}>
+                                  {row.activity === 'Add' && row.activityPercent !== null
+                                    ? `Add ${formatPercentage(row.activityPercent)}`
+                                    : row.activity === 'Reduce' && row.activityPercent !== null
+                                      ? `Reduce ${formatPercentage(Math.abs(row.activityPercent))}`
+                                      : row.activity}
+                                </td>
+                                <td className="px-4 py-2 text-gray-700">{row.shares}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <p className="text-xs text-gray-500 mt-3">
+          Month-end is the last snapshot taken that month — months with no snapshot are skipped. Activity compares share counts with the last snapshot of the prior month; the first month with snapshots has no prior month to compare against. Returns do not adjust for external cash flows.
+        </p>
       </div>
 
       <div className="bg-white rounded-xl shadow-lg p-6">
