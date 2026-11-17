@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, TrendingUp, TrendingDown, Wallet, Filter, CreditCard as Edit, Save, X, PieChart, Grid2x2 as Grid, List, RefreshCw, Camera, Download } from 'lucide-react';
 import { PortfolioStock } from '../types';
 import { supabase } from '../lib/supabase';
-import { formatCurrency, formatPercentage } from '../utils/dcf';
+import { formatCurrency, formatPercentage, MIN_CAGR_YEARS } from '../utils/dcf';
 import { format } from 'date-fns';
 import { PieChart as RechartsPieChart, Cell, ResponsiveContainer, Tooltip, Pie } from 'recharts';
 import { stockPriceService } from '../services/stockPriceService';
@@ -14,17 +14,6 @@ import {
 import type { ResolvedHoldingPrice } from '../services/priceRefreshService';
 import { useAuth } from '../hooks/useAuth';
 import { downloadCsv } from '../utils/csv';
-
-// CAGR annualizes the return since purchase, so it is only meaningful
-// once a holding has been held long enough for annualizing to make
-// sense. Below this, a few days of return annualizes into absurd
-// figures (CLS showed 52,659,478% one day after purchase). Holdings
-// younger than this show no CAGR. Note the stored purchase date sits
-// one day later than the displayed date (UTC-midnight storage,
-// Pacific rendering), so the measured holding period is a day short —
-// negligible at 30 days.
-const MIN_CAGR_HOLDING_DAYS = 30;
-const MIN_CAGR_YEARS = MIN_CAGR_HOLDING_DAYS / 365.25;
 
 type PortfolioTrackerProps = {
   isDarkMode?: boolean;
