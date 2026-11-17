@@ -6,6 +6,12 @@ import { formatCurrency, formatPercentage } from '../utils/dcf';
 import { format } from 'date-fns';
 import { PieChart as RechartsPieChart, Cell, ResponsiveContainer, Tooltip, Pie } from 'recharts';
 import { stockPriceService } from '../services/stockPriceService';
+import {
+  enqueueRateLimitedSymbols,
+  refreshAllPrices,
+  resolvePortfolioPrices
+} from '../services/priceRefreshService';
+import type { ResolvedHoldingPrice } from '../services/priceRefreshService';
 import { useAuth } from '../hooks/useAuth';
 import { downloadCsv } from '../utils/csv';
 
@@ -27,6 +33,10 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
   const [updatingPrices, setUpdatingPrices] = useState(false);
   const [fetchingNewStockPrice, setFetchingNewStockPrice] = useState(false);
   const [creatingSnapshot, setCreatingSnapshot] = useState(false);
+  // One-line note when the last Update Prices run could not refresh every
+  // holding (failed outright, or rate-limited and queued for the watchlist
+  // drain). Cleared on the next refresh.
+  const [priceRefreshNote, setPriceRefreshNote] = useState<string | null>(null);
 
   const PORTFOLIO_LIMIT = 150;
 
@@ -70,8 +80,22 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
       if (error) throw error;
 
       if (data && data.length > 0) {
+        // The displayed price is derived, not the stored column: watchlist
+        // price first, then a Finnhub fetch for tickers not in the
+        // watchlist, then the stored current_price, then the buy price.
+        // Loading the portfolio tab therefore always shows the latest
+        // watchlist prices — including after the daily 9 AM watchlist
+        // refresh — with no portfolio-side refresh needed.
+        let resolvedPrices: Map<string, ResolvedHoldingPrice> | null = null;
+        try {
+          resolvedPrices = await resolvePortfolioPrices(data, user.email);
+        } catch (error) {
+          console.error('Failed to resolve derived portfolio prices, using stored prices:', error);
+        }
+
         const enrichedStocks: PortfolioStock[] = data.map(stock => {
-          const currentPrice = stock.current_price || stock.buy_price;
+          const currentPrice = resolvedPrices?.get(stock.ticker.toUpperCase())?.price
+            ?? (stock.current_price || stock.buy_price);
           const totalValue = currentPrice * stock.quantity;
           const totalCost = stock.buy_price * stock.quantity;
           const totalReturn = totalCost > 0 ? (totalValue - totalCost) / totalCost : 0;
@@ -230,71 +254,36 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
     }
   };
 
+  // One shared refresh with the watchlist: refreshAllPrices fetches
+  // live prices for the watchlist + any portfolio-only tickers, persists
+  // the watchlist rows (+ price history) and mirrors fresh prices into
+  // the stored portfolio fallback. The displayed prices are then
+  // re-derived by loadPortfolio (watchlist first), so both tabs agree.
   const updateAllCurrentPrices = async () => {
-    if (portfolioStocks.length === 0) return;
-    
+    if (portfolioStocks.length === 0 || !user?.email) return;
+
     setUpdatingPrices(true);
-    const uniqueSymbols = [...new Set(portfolioStocks.map(stock => stock.ticker.toUpperCase()))];
+    setPriceRefreshNote(null);
     try {
-      // Use the optimized batch fetching
-      const priceMap = await stockPriceService.getMultipleStockPrices(uniqueSymbols);
-      // Prepare batch updates for database
-      const priceUpdates: { id: string; currentPrice: number }[] = [];
-      
-      portfolioStocks.forEach(stock => {
-        const normalizedTicker = stock.ticker.toUpperCase();
-        const priceData = priceMap.get(normalizedTicker);
-        if (priceData) {
-          priceUpdates.push({
-            id: stock.id!,
-            currentPrice: priceData.price
-          });
-        }
-      });
-      
-      const updatedStocks = portfolioStocks.map(stock => {
-        const normalizedTicker = stock.ticker.toUpperCase();
-        const priceData = priceMap.get(normalizedTicker);
-        const currentPrice = priceData?.price ?? stock.currentPrice ?? stock.buy_price;
-        const totalValue = currentPrice * stock.quantity;
-        return {
-          ...stock,
-          currentPrice,
-          totalValue
-        };
-      });
-      
-      // Batch update database - process in larger chunks to reduce round trips
-      const UPDATE_BATCH_SIZE = 100;
-      for (let i = 0; i < priceUpdates.length; i += UPDATE_BATCH_SIZE) {
-        const batch = priceUpdates.slice(i, i + UPDATE_BATCH_SIZE);
-        
-        const updatePromises = batch.map(async update => {
-          try {
-            const { error } = await supabase
-              .from('portfolio_stocks')
-              .update({ current_price: update.currentPrice })
-              .eq('id', update.id);
-
-            if (error) throw error;
-            return { success: true, id: update.id };
-          } catch (error) {
-            console.error(`Failed to update portfolio price for stock ${update.id}:`, error);
-            return { success: false, id: update.id };
-          }
-        });
-
-        await Promise.allSettled(updatePromises);
-
-        // Small delay between database update batches
-        if (i + UPDATE_BATCH_SIZE < priceUpdates.length) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
+      const result = await refreshAllPrices(user.email);
+      if (result.rateLimited.length > 0) {
+        // Queued for the watchlist's background drain, which picks them
+        // up when that tab is next opened.
+        enqueueRateLimitedSymbols(result.rateLimited);
       }
+      // Surface refresh problems for this portfolio's own holdings only
+      // (the watchlist banner covers the rest when that tab is open).
+      const holdingTickers = new Set(portfolioStocks.map(stock => stock.ticker.toUpperCase()));
+      const failedHoldings = result.failed.filter(ticker => holdingTickers.has(ticker));
+      const pendingHoldings = result.rateLimited.filter(ticker => holdingTickers.has(ticker));
+      const notes: string[] = [];
+      if (failedHoldings.length > 0) notes.push(`couldn't refresh ${failedHoldings.join(', ')}`);
+      if (pendingHoldings.length > 0) notes.push(`${pendingHoldings.join(', ')} still updating — they finish when you open the Stock Watchlist tab`);
+      setPriceRefreshNote(notes.length > 0 ? `Update prices: ${notes.join('; ')}.` : null);
 
-      // Reload portfolio to reflect changes
+      // Reload to re-derive displayed prices from the fresh watchlist
+      // prices (and the warm Finnhub cache for portfolio-only tickers).
       await loadPortfolio();
-      
     } catch (error) {
       console.error('Failed to update current prices:', error);
     } finally {
@@ -629,7 +618,13 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
                       </button>
                     </div>
                   </div>
-                  
+
+                  {priceRefreshNote && (
+                    <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                      {priceRefreshNote}
+                    </p>
+                  )}
+
                   {/* Sort, Filter and View Controls */}
                   <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                     <div className="grid grid-cols-2 sm:flex gap-2 sm:gap-3">
@@ -743,16 +738,12 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
                           placeholder="Buy Price"
                           step="0.01"
                         />
-                        <input
-                          type="number"
-                          value={editForm.currentPrice}
-                          onChange={(e) => setEditForm(prev => ({ ...prev, currentPrice: Number(e.target.value) }))}
-                          className="px-2 py-1 border border-gray-300 rounded text-sm"
-                          placeholder="Current Price"
-                          step="0.01"
-                        />
-                        <div className="w-full px-2 py-1 border border-gray-200 rounded text-center text-sm bg-gray-50 text-gray-700">
-                          {formatCurrency(editForm.currentPrice)}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Current Price</label>
+                          <div className="w-full px-3 py-2 border border-gray-200 rounded bg-gray-50 text-gray-700">
+                            {formatCurrency(editForm.currentPrice)}
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1">Current price is updated automatically</p>
                         </div>
                       </div>
                       <input
