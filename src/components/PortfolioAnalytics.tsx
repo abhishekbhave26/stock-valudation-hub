@@ -407,7 +407,8 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
         totalValueChange: 0,
         totalReturn: 0,
         cagr: 0,
-        yearsDiff: 0
+        yearsDiff: 0,
+        cagrAvailable: false
       };
     }
     const startValue = baseSnapshot.total_value;
@@ -417,12 +418,17 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
     const startDate = new Date(baseSnapshot.snapshot_at);
     const endDate = new Date(compareSnapshot.snapshot_at);
     const yearsDiff = (endDate.getTime() - startDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
-    const cagr = yearsDiff > 0 && startValue > 0 ? Math.pow(endValue / startValue, 1 / yearsDiff) - 1 : 0;
+    // Same 30-day minimum as every other CAGR: annualizing a return
+    // earned over days produces meaningless figures (the preview showed
+    // 1.18e+25% over a 7-day snapshot span), so shorter spans get no CAGR.
+    const cagrAvailable = yearsDiff >= MIN_CAGR_YEARS && startValue > 0;
+    const cagr = cagrAvailable ? Math.pow(endValue / startValue, 1 / yearsDiff) - 1 : 0;
     return {
       totalValueChange,
       totalReturn,
       cagr,
-      yearsDiff
+      yearsDiff,
+      cagrAvailable
     };
   }, [baseSnapshot, compareSnapshot]);
 
@@ -552,7 +558,7 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
     const endDate = new Date(lastSnapshot.snapshot_at);
     const daysElapsed = Math.max(0, (endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000));
     const yearsElapsed = daysElapsed / 365.25;
-    const cagrAvailable = yearsElapsed >= 1 / 12 && startValue > 0;
+    const cagrAvailable = yearsElapsed >= MIN_CAGR_YEARS && startValue > 0;
     const cagr = cagrAvailable ? Math.pow(endValue / startValue, 1 / yearsElapsed) - 1 : 0;
 
     return {
@@ -1050,8 +1056,17 @@ export default function PortfolioAnalytics({ isDarkMode = false }: PortfolioAnal
               </div>
               <div className="bg-gray-50 rounded-lg p-4 text-center">
                 <p className="text-xs text-gray-500">Period CAGR</p>
-                <p className={`text-lg font-semibold ${snapshotPeriodMetrics.cagr >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {formatPercentage(snapshotPeriodMetrics.cagr)}
+                <p
+                  className={`text-lg font-semibold ${
+                    snapshotPeriodMetrics.cagrAvailable
+                      ? snapshotPeriodMetrics.cagr >= 0
+                        ? 'text-green-600'
+                        : 'text-red-600'
+                      : 'text-gray-500'
+                  }`}
+                  title={snapshotPeriodMetrics.cagrAvailable ? undefined : 'CAGR shows once snapshots are at least 30 days apart'}
+                >
+                  {snapshotPeriodMetrics.cagrAvailable ? formatPercentage(snapshotPeriodMetrics.cagr) : '—'}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
                   {snapshotPeriodMetrics.yearsDiff > 0 ? `${snapshotPeriodMetrics.yearsDiff.toFixed(2)} yrs` : 'N/A'}
