@@ -546,6 +546,17 @@ export default function PortfolioTracker({ isDarkMode = false }: PortfolioTracke
                         outerRadius={80}
                         fill="#8884d8"
                         dataKey="value"
+                        // No entrance animation: in Recharts 3.x the pie
+                        // animation restarts on every render (its animation
+                        // id keys off props identity, and the data array is
+                        // rebuilt each render), and it starts from
+                        // zero-width sectors — so the chart reads as an
+                        // empty white box for ~2s after mount and after
+                        // any sort/filter interaction, and stays blank in
+                        // tabs where animation frames are throttled.
+                        // Rendering without animation shows the slices on
+                        // first paint; the look is otherwise unchanged.
+                        isAnimationActive={false}
                       >
                         {pieChartData.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
