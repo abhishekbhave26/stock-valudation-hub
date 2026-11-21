@@ -87,6 +87,56 @@ const getCurrentValuation = (stock: SavedStock) => {
   };
 };
 
+// The stored per-year growth rates (percent) for the displayed case: base
+// uses the top-level rates; bear/bull use their scenario rates. Null when
+// the case is unset — a scenario only counts as set when all five growth
+// rates and its multiple are finite numbers, matching the validation in
+// dcf.ts, so a partial case never yields invented numbers.
+const getDisplayGrowthRates = (stock: SavedStock, scenario: DCFScenarioName): number[] | null => {
+  const inputs = stock.dcf_inputs;
+  if (!inputs) return null;
+  if (scenario === 'base') {
+    const rates = inputs.growthRates;
+    if (!Array.isArray(rates) || rates.length !== 5) return null;
+    if (!rates.every(rate => typeof rate === 'number' && Number.isFinite(rate))) return null;
+    return rates;
+  }
+  const scenarioInputs = scenario === 'bear' ? inputs.bearCase : inputs.bullCase;
+  if (!scenarioInputs) return null;
+  const rates = scenarioInputs.growthRates;
+  if (!Array.isArray(rates) || rates.length !== 5) return null;
+  if (!rates.every(rate => typeof rate === 'number' && Number.isFinite(rate))) return null;
+  if (!Number.isFinite(scenarioInputs.valuationMultiple)) return null;
+  return rates;
+};
+
+// Growth CAGR: the 5-year compound annual growth rate of the underlying
+// metric (earnings/revenue), from the displayed case's Y1–Y5 growth rates.
+// This is the growth of the business, not the price-return CAGR shown in
+// the CAGR column. Null when the displayed case is unset.
+const getGrowthCagr = (stock: SavedStock, scenario: DCFScenarioName): number | null => {
+  const rates = getDisplayGrowthRates(stock, scenario);
+  if (!rates) return null;
+  const compounded = rates.reduce((acc, rate) => acc * (1 + rate / 100), 1);
+  return Math.pow(compounded, 1 / 5) - 1;
+};
+
+// Valuation-to-growth ratio, PEG-like: the current valuation multiple
+// (whatever metric the stock uses — P/E, P/S, P/FCF, P/OCF) divided by
+// next year's (Y1) growth rate in percent. E.g. 30x P/E ÷ 30% growth = 1.00.
+// Null when the displayed case is unset, there is no current valuation,
+// or Y1 growth is not positive — a zero or negative growth rate makes the
+// ratio meaningless, never a negative or infinite number.
+const getValGrowthRatio = (stock: SavedStock, scenario: DCFScenarioName): number | null => {
+  const currentValuation = getCurrentValuation(stock);
+  if (!currentValuation) return null;
+  const rates = getDisplayGrowthRates(stock, scenario);
+  if (!rates) return null;
+  const y1Growth = rates[0];
+  if (!Number.isFinite(y1Growth) || y1Growth <= 0) return null;
+  return currentValuation.value / y1Growth;
+};
+
 const isStockStale = (stock: SavedStock) => {
   const updatedAt = new Date(stock.updatedAt);
   const daysSinceUpdate = differenceInDays(new Date(), updatedAt);
@@ -202,6 +252,8 @@ const StockWatchlistRow = memo(function StockWatchlistRow({
     missingConfig.length > 0 ? `Needs: ${missingConfig.map(item => item.replace(' case', '')).join(' · ')}` : null,
   ].filter(Boolean).join(' — ');
   const currentValuation = getCurrentValuation(stock);
+  const growthCagr = getGrowthCagr(stock, displayScenario);
+  const valGrowthRatio = getValGrowthRatio(stock, displayScenario);
   const dayChange = getDayChange(priceHistory, stock);
   const recentCloses = getRecentCloses(priceHistory, stock);
 
@@ -321,22 +373,18 @@ const StockWatchlistRow = memo(function StockWatchlistRow({
         </div>
       </td>
       <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
-        <div className="text-xs space-y-1">
-          {display.projectedPrices ? (
-            <>
-              <div>1Y: {formatCurrency(display.projectedPrices[0] || 0)}</div>
-              <div>3Y: {formatCurrency(display.projectedPrices[2] || 0)}</div>
-              <div>5Y: {formatCurrency(display.projectedPrices[4] || 0)}</div>
-            </>
-          ) : (
-            <span className="text-gray-400" title={`${displayScenario === 'bear' ? 'Bear' : 'Bull'} case not entered yet`}>—</span>
-          )}
-        </div>
-      </td>
-      <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
         {display.cagr !== null ? (
           <div className={`text-sm font-medium ${getPerformanceColor(display.cagr, 'cagr')}`}>
             {formatPercentage(display.cagr)}
+          </div>
+        ) : (
+          <span className="text-sm text-gray-400">—</span>
+        )}
+      </td>
+      <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
+        {growthCagr !== null ? (
+          <div className={`text-sm font-medium ${getPerformanceColor(growthCagr, 'cagr')}`}>
+            {formatPercentage(growthCagr)}
           </div>
         ) : (
           <span className="text-sm text-gray-400">—</span>
@@ -352,9 +400,9 @@ const StockWatchlistRow = memo(function StockWatchlistRow({
         )}
       </td>
       <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
-        {display.buyTarget !== null ? (
-          <div className="text-sm font-medium text-blue-600">
-            {formatCurrency(display.buyTarget)}
+        {valGrowthRatio !== null ? (
+          <div className="text-sm font-medium text-gray-900">
+            {valGrowthRatio.toFixed(2)}
           </div>
         ) : (
           <span className="text-sm text-gray-400">—</span>
@@ -370,7 +418,7 @@ const StockWatchlistRow = memo(function StockWatchlistRow({
         )}
       </td>
       <td className="px-3 sm:px-6 py-4">
-        <div className={`whitespace-nowrap text-xs sm:text-sm ${needsUpdate ? 'text-red-600 font-medium' : 'text-gray-900'}`}>
+        <div className={`whitespace-nowrap text-[10px] ${needsUpdate ? 'text-red-600 font-medium' : 'text-gray-900'}`}>
           {format(new Date(stock.updatedAt), 'MMM dd, yyyy')}
         </div>
         {isStale && (
@@ -424,7 +472,7 @@ export default function StockWatchlist() {
   const { user } = useAuth();
   const [stocks, setStocks] = useState<SavedStock[]>([]);
   const [loading, setLoading] = useState(false);
-  const [sortBy, setSortBy] = useState<'ticker' | 'expectedReturn' | 'dayChange' | 'cagr' | 'buyTarget' | 'status' | 'lastUpdated' | 'valuation' | 'category' | 'region'>('cagr');
+  const [sortBy, setSortBy] = useState<'ticker' | 'expectedReturn' | 'dayChange' | 'cagr' | 'valGrowth' | 'status' | 'lastUpdated' | 'valuation' | 'category' | 'region'>('cagr');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   // Which DCF case the watchlist displays (base by default). Persisted so
   // the toggle survives reloads; base-case storage is untouched.
@@ -1199,9 +1247,24 @@ export default function StockWatchlist() {
         case 'cagr':
           comparison = (bDisplay.cagr ?? -Infinity) - (aDisplay.cagr ?? -Infinity);
           break;
-        case 'buyTarget':
-          comparison = (aDisplay.buyTarget ?? -Infinity) - (bDisplay.buyTarget ?? -Infinity);
+        case 'valGrowth': {
+          // Highest ratio first in descending mode, lowest first in
+          // ascending mode. A stock with no ratio (unset case, no current
+          // valuation, or non-positive Y1 growth) always sorts to the
+          // bottom, in both directions — same pre-flip trick as dayChange.
+          const aRatio = getValGrowthRatio(a, displayScenario);
+          const bRatio = getValGrowthRatio(b, displayScenario);
+          if (aRatio === null && bRatio === null) {
+            comparison = 0;
+          } else if (aRatio === null) {
+            comparison = sortDirection === 'desc' ? 1 : -1;
+          } else if (bRatio === null) {
+            comparison = sortDirection === 'desc' ? -1 : 1;
+          } else {
+            comparison = bRatio - aRatio;
+          }
           break;
+        }
         case 'status':
           const statusOrder = { 'strong-buy': 0, 'buy': 1, 'hold': 2, 'overvalued': 3 };
           const aStatus = aDisplay.isSet && aDisplay.fairValue !== null
@@ -1864,7 +1927,7 @@ export default function StockWatchlist() {
                     <option value="expectedReturn">Sort: Return</option>
                     <option value="dayChange">Sort: Day Change</option>
                     <option value="cagr">Sort: CAGR</option>
-                    <option value="buyTarget">Sort: Buy Target</option>
+                    <option value="valGrowth">Sort: Val/Growth</option>
                     <option value="status">Sort: Status</option>
                     <option value="lastUpdated">Sort: Updated</option>
                     <option value="valuation">Sort: Valuation</option>
@@ -1996,10 +2059,10 @@ export default function StockWatchlist() {
                 <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Stock</th>
                 <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Current Price</th>
                 <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Day Change</th>
-                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Target Prices</th>
                 <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">CAGR</th>
+                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Growth CAGR</th>
                 <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Current Valuation</th>
-                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Buy Target</th>
+                <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Val/Growth</th>
                 <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Status</th>
                 <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Last Updated</th>
                 <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Actions</th>
