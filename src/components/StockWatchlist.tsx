@@ -118,7 +118,8 @@ const getGrowthCagr = (stock: SavedStock, scenario: DCFScenarioName): number | n
   const rates = getDisplayGrowthRates(stock, scenario);
   if (!rates) return null;
   const compounded = rates.reduce((acc, rate) => acc * (1 + rate / 100), 1);
-  return Math.pow(compounded, 1 / 5) - 1;
+  const cagr = Math.pow(compounded, 1 / 5) - 1;
+  return Number.isFinite(cagr) ? cagr : null;
 };
 
 // Valuation-to-growth ratio, PEG-like: the current valuation multiple
@@ -472,7 +473,7 @@ export default function StockWatchlist() {
   const { user } = useAuth();
   const [stocks, setStocks] = useState<SavedStock[]>([]);
   const [loading, setLoading] = useState(false);
-  const [sortBy, setSortBy] = useState<'ticker' | 'expectedReturn' | 'dayChange' | 'cagr' | 'valGrowth' | 'status' | 'lastUpdated' | 'valuation' | 'category' | 'region'>('cagr');
+  const [sortBy, setSortBy] = useState<'ticker' | 'expectedReturn' | 'dayChange' | 'cagr' | 'growthCagr' | 'valGrowth' | 'status' | 'lastUpdated' | 'valuation' | 'category' | 'region'>('cagr');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   // Which DCF case the watchlist displays (base by default). Persisted so
   // the toggle survives reloads; base-case storage is untouched.
@@ -1247,6 +1248,24 @@ export default function StockWatchlist() {
         case 'cagr':
           comparison = (bDisplay.cagr ?? -Infinity) - (aDisplay.cagr ?? -Infinity);
           break;
+        case 'growthCagr': {
+          // Highest growth CAGR first in descending mode, lowest first
+          // in ascending mode. A stock with no growth CAGR (unset case)
+          // always sorts to the bottom, in both directions — same
+          // pre-flip trick as dayChange and valGrowth.
+          const aGrowthCagr = getGrowthCagr(a, displayScenario);
+          const bGrowthCagr = getGrowthCagr(b, displayScenario);
+          if (aGrowthCagr === null && bGrowthCagr === null) {
+            comparison = 0;
+          } else if (aGrowthCagr === null) {
+            comparison = sortDirection === 'desc' ? 1 : -1;
+          } else if (bGrowthCagr === null) {
+            comparison = sortDirection === 'desc' ? -1 : 1;
+          } else {
+            comparison = bGrowthCagr - aGrowthCagr;
+          }
+          break;
+        }
         case 'valGrowth': {
           // Highest ratio first in descending mode, lowest first in
           // ascending mode. A stock with no ratio (unset case, no current
@@ -1927,6 +1946,7 @@ export default function StockWatchlist() {
                     <option value="expectedReturn">Sort: Return</option>
                     <option value="dayChange">Sort: Day Change</option>
                     <option value="cagr">Sort: CAGR</option>
+                    <option value="growthCagr">Sort: Growth CAGR</option>
                     <option value="valGrowth">Sort: Val/Growth</option>
                     <option value="status">Sort: Status</option>
                     <option value="lastUpdated">Sort: Updated</option>
