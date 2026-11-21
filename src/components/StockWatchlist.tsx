@@ -118,7 +118,8 @@ const getGrowthCagr = (stock: SavedStock, scenario: DCFScenarioName): number | n
   const rates = getDisplayGrowthRates(stock, scenario);
   if (!rates) return null;
   const compounded = rates.reduce((acc, rate) => acc * (1 + rate / 100), 1);
-  return Math.pow(compounded, 1 / 5) - 1;
+  const cagr = Math.pow(compounded, 1 / 5) - 1;
+  return Number.isFinite(cagr) ? cagr : null;
 };
 
 // Valuation-to-growth ratio, PEG-like: the current valuation multiple
