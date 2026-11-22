@@ -155,6 +155,106 @@ const getMissingConfig = (stock: SavedStock): string[] => {
   return missing;
 };
 
+/** Shared "needs update" condition for a row: not updated in > 90 days
+ *  OR missing a category. Extracted from the row so the badge and the
+ *  "Stale only" / "Needs update only" filters can never disagree. */
+const getNeedsUpdate = (stock: SavedStock): boolean =>
+  isStockStale(stock) || getMissingConfig(stock).length > 0;
+
+// Exhaustive two-tier watchlist filters (Basic bar + Advanced panel).
+// Numeric inputs are strings in state; '' means "no constraint".
+// Search lives in its own `searchTerm` state (the existing Search input)
+// and the panel open/closed state is separate UI state.
+interface WatchlistFilters {
+  statuses: string[]; // 'strong-buy' | 'buy' | 'hold' | 'overvalued'
+  growthCagrMin: string; // percent, '' = unset
+  valuationMax: string;
+  valuationMetric: '' | 'P/E' | 'P/S' | 'P/FCF'; // '' = All
+  valGrowthMax: string;
+  dayChangeMax: string; // percent, '' = unset
+  priceMin: string; priceMax: string;
+  priceCagrMin: string; priceCagrMax: string; // percent
+  categories: string[]; regions: string[];
+  baseMetricMin: string; baseMetricMax: string;
+  desiredReturnMin: string; desiredReturnMax: string; // percent
+  fvPriceMin: string; fvPriceMax: string; // decimal ratio
+  bearFvMin: string; bearFvMax: string; // dollars
+  bullFvMin: string; bullFvMax: string; // dollars
+  updatedBefore: string; // 'yyyy-MM-dd', '' = unset
+  staleOnly: boolean;
+  notesQuery: string;
+  needsUpdateOnly: boolean;
+}
+
+const DEFAULT_FILTERS: WatchlistFilters = {
+  statuses: [],
+  growthCagrMin: '',
+  valuationMax: '',
+  valuationMetric: '',
+  valGrowthMax: '',
+  dayChangeMax: '',
+  priceMin: '', priceMax: '',
+  priceCagrMin: '', priceCagrMax: '',
+  categories: [], regions: [],
+  baseMetricMin: '', baseMetricMax: '',
+  desiredReturnMin: '', desiredReturnMax: '',
+  fvPriceMin: '', fvPriceMax: '',
+  bearFvMin: '', bearFvMax: '',
+  bullFvMin: '', bullFvMax: '',
+  updatedBefore: '',
+  staleOnly: false,
+  notesQuery: '',
+  needsUpdateOnly: false,
+};
+
+// Parse a filter number input: empty or non-numeric input means "no
+// constraint" (null) — never crash, never match everything.
+const parseFilterNumber = (value: string): number | null => {
+  if (value.trim() === '') return null;
+  const parsed = parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+// Range check for one numeric field: when neither end constrains, any
+// value matches (including null — an unset filter never excludes). When
+// at least one end is set, a null / non-finite value never matches, each
+// end applies independently, and an inverted range simply matches nothing.
+const inFilterRange = (value: number | null, min: string, max: string): boolean => {
+  const minValue = parseFilterNumber(min);
+  const maxValue = parseFilterNumber(max);
+  if (minValue === null && maxValue === null) return true;
+  if (value === null || !Number.isFinite(value)) return false;
+  if (minValue !== null && value < minValue) return false;
+  if (maxValue !== null && value > maxValue) return false;
+  return true;
+};
+
+// Toggle one value in a filter list (statuses / categories / regions),
+// always returning a new array — never mutating the state in place.
+const toggleFilterList = (list: string[], value: string): string[] =>
+  list.includes(value) ? list.filter(item => item !== value) : [...list, value];
+
+// How many Advanced-panel fields are currently set — for the badge on
+// the toggle while the panel is collapsed. Each non-empty input, each
+// selected category/region and each checked box counts once.
+const countActiveAdvancedFilters = (filters: WatchlistFilters): number => {
+  let count = 0;
+  const textFields: (keyof WatchlistFilters)[] = [
+    'priceMin', 'priceMax', 'priceCagrMin', 'priceCagrMax',
+    'baseMetricMin', 'baseMetricMax', 'desiredReturnMin', 'desiredReturnMax',
+    'fvPriceMin', 'fvPriceMax', 'bearFvMin', 'bearFvMax',
+    'bullFvMin', 'bullFvMax', 'updatedBefore', 'notesQuery',
+  ];
+  textFields.forEach(field => {
+    const value = filters[field];
+    if (typeof value === 'string' && value.trim() !== '') count += 1;
+  });
+  count += filters.categories.length + filters.regions.length;
+  if (filters.staleOnly) count += 1;
+  if (filters.needsUpdateOnly) count += 1;
+  return count;
+};
+
 // Max recorded closes shown in the expandable history row.
 const RECENT_CLOSES_SHOWN = 5;
 
@@ -265,7 +365,7 @@ const StockWatchlistRow = memo(function StockWatchlistRow({
     : null;
   const isStale = isStockStale(stock);
   const missingConfig = getMissingConfig(stock);
-  const needsUpdate = isStale || missingConfig.length > 0;
+  const needsUpdate = getNeedsUpdate(stock);
   // Tooltip naming every reason this row is flagged, e.g.
   // "Last updated Oct 05, 2026 - over 90 days ago — Needs: Category".
   // The missing pieces use the same short form as the visible
@@ -511,8 +611,6 @@ export default function StockWatchlist() {
   const [filterBy, setFilterBy] = useState<
     'all' | 'favorites' | 'undervalued' | 'overvalued' | 'cagr10' | 'cagr15' | 'cagr20'
   >('all');
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const [regionFilter, setRegionFilter] = useState<string>('all');
   // True while the Categories | Regions manager is shown instead of the table.
   const [showManager, setShowManager] = useState(false);
   // Bumped after the manager changes anything, so every useTaxonomy
@@ -532,6 +630,20 @@ export default function StockWatchlist() {
   const { options: categoryOptions } = useTaxonomy('category', inUseCategories, taxonomyRefreshKey);
   const { options: regionOptions } = useTaxonomy('region', inUseRegions, taxonomyRefreshKey);
   const [searchTerm, setSearchTerm] = useState('');
+  // Exhaustive two-tier watchlist filters (Basic bar + Advanced panel).
+  // No filter state persists across reloads in v1 (unlike
+  // displayScenario, which is persisted) — a deliberate scope choice.
+  const [filters, setFilters] = useState<WatchlistFilters>(DEFAULT_FILTERS);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+
+  // Reset every filter (both tiers) plus the pre-existing filterBy
+  // select and the search box. The Advanced panel stays open or closed
+  // as it is.
+  const clearFilters = () => {
+    setFilters(DEFAULT_FILTERS);
+    setSearchTerm('');
+    setFilterBy('all');
+  };
   const [editingStock, setEditingStock] = useState<SavedStock | null>(null);
   const [editForm, setEditForm] = useState<DCFInputs | null>(null);
   const [editResults, setEditResults] = useState<any>(null);
@@ -1210,21 +1322,153 @@ export default function StockWatchlist() {
 
   const filteredAndSortedStocks = useMemo(() => stocks
     .filter(stock => {
-      // Search filter
+      // Search filter (ticker substring, case-insensitive — there is no
+      // company-name field in SavedStock, so search is ticker-only).
       if (searchTerm && !stock.ticker.toLowerCase().includes(searchTerm.toLowerCase())) {
         return false;
       }
 
-      // Category filter — a stock matches if ANY of its categories match.
-      if (categoryFilter !== 'all' && !stock.categories.includes(categoryFilter)) {
+      // Status checkboxes — status comes from the displayed case exactly
+      // like the row badge. A row with no status ("—", unset case)
+      // matches no status checkbox.
+      if (filters.statuses.length > 0) {
+        const display = getDisplayValuation(stock, displayScenario);
+        if (!display.isSet || display.fairValue === null) return false;
+        const status = getValuationStatusForFairValue(stock.currentPrice, display.fairValue).status;
+        if (!filters.statuses.includes(status)) return false;
+      }
+
+      // Growth CAGR ≥ (percent). Null (e.g. HIMS) never matches.
+      if (filters.growthCagrMin !== '') {
+        const min = parseFilterNumber(filters.growthCagrMin);
+        if (min !== null) {
+          const growthCagr = getGrowthCagr(stock, displayScenario);
+          if (growthCagr === null || growthCagr * 100 < min) return false;
+        }
+      }
+
+      // Current Valuation ≤ (+ metric selector). Current valuation is
+      // case-independent in the code (it uses the shared base metric),
+      // so the selector + range apply to the single displayed value. A
+      // metric selector on its own also constrains: only stocks on that
+      // metric match. Stocks on P/B, P/OCF, EV/Sales or EV/EBITDA match
+      // only when the selector is "All".
+      if (filters.valuationMax !== '' || filters.valuationMetric !== '') {
+        const valuationMax = parseFilterNumber(filters.valuationMax);
+        if (valuationMax !== null || filters.valuationMetric !== '') {
+          const currentValuation = getCurrentValuation(stock);
+          if (currentValuation === null) return false;
+          if (filters.valuationMetric !== '' && currentValuation.metric !== filters.valuationMetric) return false;
+          if (valuationMax !== null && currentValuation.value > valuationMax) return false;
+        }
+      }
+
+      // Val/Growth ≤ (displayed case's Y1 growth).
+      if (filters.valGrowthMax !== '') {
+        const max = parseFilterNumber(filters.valGrowthMax);
+        if (max !== null) {
+          const ratio = getValGrowthRatio(stock, displayScenario);
+          if (ratio === null || ratio > max) return false;
+        }
+      }
+
+      // Day Change ≤ (percent).
+      if (filters.dayChangeMax !== '') {
+        const max = parseFilterNumber(filters.dayChangeMax);
+        if (max !== null) {
+          const dayChange = getDayChange(priceHistory, stock);
+          if (dayChange === null || dayChange * 100 > max) return false;
+        }
+      }
+
+      // Price min–max (dollars).
+      if (!inFilterRange(stock.currentPrice, filters.priceMin, filters.priceMax)) {
         return false;
       }
 
-      // Region filter, parallel to category — ANY match.
-      if (regionFilter !== 'all' && !stock.regions.includes(regionFilter)) {
+      // Price-return CAGR min–max (percent; same value the CAGR column
+      // shows — the displayed-case CAGR, falling back to the stored base
+      // CAGR when the case is unset, like the filterBy presets).
+      if (!inFilterRange(
+        (getDisplayValuation(stock, displayScenario).cagr ?? stock.cagr) * 100,
+        filters.priceCagrMin,
+        filters.priceCagrMax
+      )) {
         return false;
       }
-      
+
+      // Category / Region multi-selects — a stock matches if ANY of its
+      // categories / regions is selected. A stock with none set matches
+      // only when nothing is selected.
+      if (filters.categories.length > 0 &&
+        !stock.categories.some(category => filters.categories.includes(category))) {
+        return false;
+      }
+      if (filters.regions.length > 0 &&
+        !stock.regions.some(region => filters.regions.includes(region))) {
+        return false;
+      }
+
+      // Base metric value min–max (dollars per share), gated by the same
+      // metric selector as Current Valuation. Negative base metrics
+      // (e.g. HIMS −0.56) compare normally — no clamping at zero.
+      if (filters.baseMetricMin !== '' || filters.baseMetricMax !== '') {
+        const baseMetricMin = parseFilterNumber(filters.baseMetricMin);
+        const baseMetricMax = parseFilterNumber(filters.baseMetricMax);
+        if (baseMetricMin !== null || baseMetricMax !== null) {
+          if (filters.valuationMetric !== '' && stock.dcf_inputs?.valuationMetric !== filters.valuationMetric) return false;
+          const baseMetric = stock.dcf_inputs?.baseMetricPerShare ?? null;
+          if (!inFilterRange(baseMetric, filters.baseMetricMin, filters.baseMetricMax)) return false;
+        }
+      }
+
+      // Desired Return min–max (percent, raw stored number).
+      if (!inFilterRange(stock.dcf_inputs?.desiredReturn ?? null, filters.desiredReturnMin, filters.desiredReturnMax)) {
+        return false;
+      }
+
+      // FV / Price ratio min–max (decimal ratio, displayed case).
+      if (!inFilterRange(
+        (() => {
+          const display = getDisplayValuation(stock, displayScenario);
+          return display.fairValue !== null && stock.currentPrice > 0
+            ? display.fairValue / stock.currentPrice
+            : null;
+        })(),
+        filters.fvPriceMin,
+        filters.fvPriceMax
+      )) {
+        return false;
+      }
+
+      // Bear-case FV range (dollars) and Bull-case FV range (dollars) —
+      // read directly from their own case, not the displayed case. An
+      // unset case has a null FV and never matches a set range.
+      if (!inFilterRange(getDisplayValuation(stock, 'bear').fairValue, filters.bearFvMin, filters.bearFvMax)) {
+        return false;
+      }
+      if (!inFilterRange(getDisplayValuation(stock, 'bull').fairValue, filters.bullFvMin, filters.bullFvMax)) {
+        return false;
+      }
+
+      // Last Updated: "updated before [date]" (ISO string comparison,
+      // so no timezone edge cases).
+      if (filters.updatedBefore !== '' &&
+        format(new Date(stock.updatedAt), 'yyyy-MM-dd') >= filters.updatedBefore) {
+        return false;
+      }
+
+      // Stale only / Needs update only — the same in-app condition as
+      // the row badge (not updated in > 90 days OR missing a category).
+      if (filters.staleOnly && !getNeedsUpdate(stock)) return false;
+      if (filters.needsUpdateOnly && !getNeedsUpdate(stock)) return false;
+
+      // Notes text search (top-level notes field).
+      if (filters.notesQuery.trim() !== '' &&
+        !(stock.notes ?? '').toLowerCase().includes(filters.notesQuery.trim().toLowerCase())) {
+        return false;
+      }
+
       // Valuation filter — relative to the displayed case's fair value
       // (base fair value when the selected case is not entered).
       if (filterBy === 'favorites') return Boolean(stock.isFavorite);
@@ -1335,7 +1579,7 @@ export default function StockWatchlist() {
       }
       
       return sortDirection === 'desc' ? comparison : -comparison;
-    }), [stocks, searchTerm, filterBy, categoryFilter, regionFilter, sortBy, sortDirection, displayScenario, priceHistory]);
+    }), [stocks, searchTerm, filterBy, filters, sortBy, sortDirection, displayScenario, priceHistory]);
 
   // Categories actually present on the watchlist, for the filter dropdown.
   // Built from the loaded rows so user-typed categories show up too.
@@ -1357,6 +1601,13 @@ export default function StockWatchlist() {
     });
     return [...seen].sort((a, b) => a.localeCompare(b));
   }, [stocks]);
+
+  // How many Advanced-panel filters are set — shown on the toggle as a
+  // badge while the panel is collapsed.
+  const activeAdvancedFilterCount = useMemo(
+    () => countActiveAdvancedFilters(filters),
+    [filters]
+  );
 
   if (loading) {
     return (
@@ -1999,30 +2250,6 @@ export default function StockWatchlist() {
                   <option value="cagr20">CAGR ~ 20%</option>
                 </select>
 
-                <select
-                  value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value)}
-                  className="px-3 h-10 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 min-w-0 bg-white"
-                  title="Filter by category"
-                >
-                  <option value="all">All Categories</option>
-                  {availableCategories.map(category => (
-                    <option key={category} value={category}>{category}</option>
-                  ))}
-                </select>
-
-                <select
-                  value={regionFilter}
-                  onChange={(e) => setRegionFilter(e.target.value)}
-                  className="px-3 h-10 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 min-w-0 bg-white"
-                  title="Filter by region"
-                >
-                  <option value="all">All Regions</option>
-                  {availableRegions.map(region => (
-                    <option key={region} value={region}>{region}</option>
-                  ))}
-                </select>
-
                 <button
                   type="button"
                   onClick={() => setShowManager(true)}
@@ -2035,8 +2262,395 @@ export default function StockWatchlist() {
               </div>
             </div>
           </div>
+
+          <div className="border-t border-gray-100" />
+
+          {/* Row 3: Filter — Basic bar (always visible) */}
+          <div className="flex flex-col gap-1">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Filter</span>
+            <div className="flex flex-wrap gap-2 items-end">
+              {/* Status checkboxes */}
+              <div className="flex flex-col gap-1">
+                <span className="text-[11px] font-medium text-gray-500">Status</span>
+                <div className="flex flex-wrap gap-3 h-10 items-center">
+                  {([
+                    ['strong-buy', 'Strong Buy'],
+                    ['buy', 'Buy'],
+                    ['hold', 'Hold'],
+                    ['overvalued', 'Overvalued'],
+                  ] as const).map(([value, label]) => (
+                    <label key={value} className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer whitespace-nowrap">
+                      <input
+                        type="checkbox"
+                        checked={filters.statuses.includes(value)}
+                        onChange={() => setFilters(prev => ({ ...prev, statuses: toggleFilterList(prev.statuses, value) }))}
+                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Growth CAGR ≥ */}
+              <div className="flex flex-col gap-1">
+                <label htmlFor="filter-growth-cagr-min" className="text-[11px] font-medium text-gray-500">Growth CAGR ≥ %</label>
+                <input
+                  id="filter-growth-cagr-min"
+                  type="number"
+                  placeholder="15"
+                  value={filters.growthCagrMin}
+                  onChange={(e) => setFilters(prev => ({ ...prev, growthCagrMin: e.target.value }))}
+                  className="px-3 h-10 w-24 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Current Valuation ≤ + metric selector. The valuation is
+                  case-independent (shared base metric), so this range
+                  applies to the single displayed value. */}
+              <div className="flex flex-col gap-1">
+                <label htmlFor="filter-valuation-max" className="text-[11px] font-medium text-gray-500">Valuation ≤</label>
+                <div className="flex gap-2">
+                  <input
+                    id="filter-valuation-max"
+                    type="number"
+                    placeholder="20"
+                    value={filters.valuationMax}
+                    onChange={(e) => setFilters(prev => ({ ...prev, valuationMax: e.target.value }))}
+                    className="px-3 h-10 w-24 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                  />
+                  <select
+                    value={filters.valuationMetric}
+                    onChange={(e) => setFilters(prev => ({ ...prev, valuationMetric: e.target.value as WatchlistFilters['valuationMetric'] }))}
+                    aria-label="Valuation metric"
+                    title="Which valuation metric the Valuation and Base metric filters apply to"
+                    className="px-3 h-10 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-white"
+                  >
+                    <option value="">All metrics</option>
+                    <option value="P/E">P/E</option>
+                    <option value="P/S">P/S</option>
+                    <option value="P/FCF">P/FCF</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Val/Growth ≤ */}
+              <div className="flex flex-col gap-1">
+                <label htmlFor="filter-val-growth-max" className="text-[11px] font-medium text-gray-500">Val/Growth ≤</label>
+                <input
+                  id="filter-val-growth-max"
+                  type="number"
+                  step="0.1"
+                  placeholder="1.0"
+                  value={filters.valGrowthMax}
+                  onChange={(e) => setFilters(prev => ({ ...prev, valGrowthMax: e.target.value }))}
+                  className="px-3 h-10 w-24 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Day Change ≤ */}
+              <div className="flex flex-col gap-1">
+                <label htmlFor="filter-day-change-max" className="text-[11px] font-medium text-gray-500">Day Change ≤ %</label>
+                <input
+                  id="filter-day-change-max"
+                  type="number"
+                  placeholder="-5"
+                  value={filters.dayChangeMax}
+                  onChange={(e) => setFilters(prev => ({ ...prev, dayChangeMax: e.target.value }))}
+                  className="px-3 h-10 w-24 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Advanced toggle + Clear all */}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAdvancedOpen(open => !open)}
+                  aria-expanded={advancedOpen}
+                  className="flex items-center justify-center gap-1 px-3 h-10 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 whitespace-nowrap"
+                  title="Show or hide the advanced filters"
+                >
+                  {advancedOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                  Advanced filters{!advancedOpen && activeAdvancedFilterCount > 0 ? ` (${activeAdvancedFilterCount})` : ''}
+                </button>
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="px-3 h-10 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 whitespace-nowrap"
+                  title="Reset all filters (both tiers), the View filter and search"
+                >
+                  Clear all
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Advanced panel (collapsed by default) */}
+          {advancedOpen && (
+            <div className="border border-gray-200 rounded-lg p-4">
+              <div className="flex flex-wrap gap-4 items-end">
+                {/* Price min–max */}
+                <div className="flex flex-col gap-1">
+                  <span className="text-[11px] font-medium text-gray-500">Price ($)</span>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      placeholder="Min"
+                      aria-label="Minimum price"
+                      value={filters.priceMin}
+                      onChange={(e) => setFilters(prev => ({ ...prev, priceMin: e.target.value }))}
+                      className="px-3 h-10 w-24 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Max"
+                      aria-label="Maximum price"
+                      value={filters.priceMax}
+                      onChange={(e) => setFilters(prev => ({ ...prev, priceMax: e.target.value }))}
+                      className="px-3 h-10 w-24 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Price-return CAGR min–max */}
+                <div className="flex flex-col gap-1">
+                  <span className="text-[11px] font-medium text-gray-500">Price CAGR (%)</span>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      placeholder="Min"
+                      aria-label="Minimum price-return CAGR"
+                      value={filters.priceCagrMin}
+                      onChange={(e) => setFilters(prev => ({ ...prev, priceCagrMin: e.target.value }))}
+                      className="px-3 h-10 w-24 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Max"
+                      aria-label="Maximum price-return CAGR"
+                      value={filters.priceCagrMax}
+                      onChange={(e) => setFilters(prev => ({ ...prev, priceCagrMax: e.target.value }))}
+                      className="px-3 h-10 w-24 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Category multi-select */}
+                <div className="flex flex-col gap-1">
+                  <span className="text-[11px] font-medium text-gray-500">Category</span>
+                  <div className="max-h-40 overflow-y-auto border border-gray-300 rounded-lg min-w-[12rem]">
+                    {availableCategories.length === 0 && (
+                      <p className="px-3 py-2 text-sm text-gray-500">No categories yet.</p>
+                    )}
+                    {availableCategories.map(category => (
+                      <label key={category} className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={filters.categories.includes(category)}
+                          onChange={() => setFilters(prev => ({ ...prev, categories: toggleFilterList(prev.categories, category) }))}
+                          className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                        />
+                        <span>{category}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Region multi-select */}
+                <div className="flex flex-col gap-1">
+                  <span className="text-[11px] font-medium text-gray-500">Region</span>
+                  <div className="max-h-40 overflow-y-auto border border-gray-300 rounded-lg min-w-[12rem]">
+                    {availableRegions.length === 0 && (
+                      <p className="px-3 py-2 text-sm text-gray-500">No regions yet.</p>
+                    )}
+                    {availableRegions.map(region => (
+                      <label key={region} className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={filters.regions.includes(region)}
+                          onChange={() => setFilters(prev => ({ ...prev, regions: toggleFilterList(prev.regions, region) }))}
+                          className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                        />
+                        <span>{region}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Base metric min–max */}
+                <div className="flex flex-col gap-1">
+                  <span className="text-[11px] font-medium text-gray-500">Base metric ($)</span>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="Min"
+                      aria-label="Minimum base metric"
+                      value={filters.baseMetricMin}
+                      onChange={(e) => setFilters(prev => ({ ...prev, baseMetricMin: e.target.value }))}
+                      className="px-3 h-10 w-24 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                    />
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="Max"
+                      aria-label="Maximum base metric"
+                      value={filters.baseMetricMax}
+                      onChange={(e) => setFilters(prev => ({ ...prev, baseMetricMax: e.target.value }))}
+                      className="px-3 h-10 w-24 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <span className="text-[11px] text-gray-400">Uses the metric selector in the Filter bar.</span>
+                </div>
+
+                {/* Desired Return min–max */}
+                <div className="flex flex-col gap-1">
+                  <span className="text-[11px] font-medium text-gray-500">Desired Return (%)</span>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      placeholder="Min"
+                      aria-label="Minimum desired return"
+                      value={filters.desiredReturnMin}
+                      onChange={(e) => setFilters(prev => ({ ...prev, desiredReturnMin: e.target.value }))}
+                      className="px-3 h-10 w-24 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Max"
+                      aria-label="Maximum desired return"
+                      value={filters.desiredReturnMax}
+                      onChange={(e) => setFilters(prev => ({ ...prev, desiredReturnMax: e.target.value }))}
+                      className="px-3 h-10 w-24 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* FV / Price ratio min–max */}
+                <div className="flex flex-col gap-1">
+                  <span className="text-[11px] font-medium text-gray-500">FV / Price</span>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      step="0.1"
+                      placeholder="Min"
+                      aria-label="Minimum fair value to price ratio"
+                      value={filters.fvPriceMin}
+                      onChange={(e) => setFilters(prev => ({ ...prev, fvPriceMin: e.target.value }))}
+                      className="px-3 h-10 w-24 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                    />
+                    <input
+                      type="number"
+                      step="0.1"
+                      placeholder="Max"
+                      aria-label="Maximum fair value to price ratio"
+                      value={filters.fvPriceMax}
+                      onChange={(e) => setFilters(prev => ({ ...prev, fvPriceMax: e.target.value }))}
+                      className="px-3 h-10 w-24 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Bear-case FV min–max */}
+                <div className="flex flex-col gap-1">
+                  <span className="text-[11px] font-medium text-gray-500">Bear FV ($)</span>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      placeholder="Min"
+                      aria-label="Minimum bear-case fair value"
+                      value={filters.bearFvMin}
+                      onChange={(e) => setFilters(prev => ({ ...prev, bearFvMin: e.target.value }))}
+                      className="px-3 h-10 w-24 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Max"
+                      aria-label="Maximum bear-case fair value"
+                      value={filters.bearFvMax}
+                      onChange={(e) => setFilters(prev => ({ ...prev, bearFvMax: e.target.value }))}
+                      className="px-3 h-10 w-24 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Bull-case FV min–max */}
+                <div className="flex flex-col gap-1">
+                  <span className="text-[11px] font-medium text-gray-500">Bull FV ($)</span>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      placeholder="Min"
+                      aria-label="Minimum bull-case fair value"
+                      value={filters.bullFvMin}
+                      onChange={(e) => setFilters(prev => ({ ...prev, bullFvMin: e.target.value }))}
+                      className="px-3 h-10 w-24 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Max"
+                      aria-label="Maximum bull-case fair value"
+                      value={filters.bullFvMax}
+                      onChange={(e) => setFilters(prev => ({ ...prev, bullFvMax: e.target.value }))}
+                      className="px-3 h-10 w-24 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Last Updated cutoff + Stale only */}
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="filter-updated-before" className="text-[11px] font-medium text-gray-500">Updated before</label>
+                  <input
+                    id="filter-updated-before"
+                    type="date"
+                    value={filters.updatedBefore}
+                    onChange={(e) => setFilters(prev => ({ ...prev, updatedBefore: e.target.value }))}
+                    className="px-3 h-10 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 bg-white"
+                  />
+                  <label className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      checked={filters.staleOnly}
+                      onChange={(e) => setFilters(prev => ({ ...prev, staleOnly: e.target.checked }))}
+                      className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                    />
+                    Stale only
+                  </label>
+                </div>
+
+                {/* Notes text search */}
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="filter-notes-query" className="text-[11px] font-medium text-gray-500">Notes contain</label>
+                  <input
+                    id="filter-notes-query"
+                    type="text"
+                    placeholder="Search notes..."
+                    value={filters.notesQuery}
+                    onChange={(e) => setFilters(prev => ({ ...prev, notesQuery: e.target.value }))}
+                    className="px-3 h-10 w-48 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                {/* Needs update only */}
+                <div className="flex flex-col gap-1">
+                  <span className="text-[11px] font-medium text-gray-500">Flags</span>
+                  <label className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer whitespace-nowrap h-10">
+                    <input
+                      type="checkbox"
+                      checked={filters.needsUpdateOnly}
+                      onChange={(e) => setFilters(prev => ({ ...prev, needsUpdateOnly: e.target.checked }))}
+                      className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                    />
+                    Needs update only
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
+      {/* Filter result count — updates live as filters change */}
+      <p className="text-sm text-gray-500 px-1">{filteredAndSortedStocks.length} of {stocks.length} stocks</p>
       {/* Background price-update queue */}
       {priceQueueActive && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3" role="status">
@@ -2093,6 +2707,19 @@ export default function StockWatchlist() {
         </div>
       )}
       {/* Stock Table */}
+      {filteredAndSortedStocks.length === 0 ? (
+        <div className="bg-white rounded-xl shadow-lg p-8 text-center">
+          <h3 className="text-lg font-semibold text-gray-800 mb-2">No stocks match the current filters</h3>
+          <p className="text-gray-500 mb-4">Loosen a range or clear all filters to see the full watchlist.</p>
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="px-4 h-10 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+          >
+            Clear all filters
+          </button>
+        </div>
+      ) : (
       <div className="bg-white rounded-xl shadow-lg overflow-hidden">
         <div className="overflow-auto max-h-[75vh]">
           <table className="w-full">
@@ -2130,6 +2757,7 @@ export default function StockWatchlist() {
           </table>
         </div>
       </div>
+      )}
     </div>
   );
 }
