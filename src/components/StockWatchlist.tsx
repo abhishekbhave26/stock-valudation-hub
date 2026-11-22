@@ -160,14 +160,36 @@ const RECENT_CLOSES_SHOWN = 5;
 
 // Most recent recorded close for a ticker from a previous calendar day.
 // Rows recorded today (e.g. from an earlier "Update Prices" run today)
-// are skipped so the comparison is always vs the last prior day.
+// are skipped so the comparison is always vs a prior day.
+//
+// The baseline is the FIRST price recorded on the most recent prior
+// day, not the latest row before today. A day can hold several
+// refreshes (the morning update, a midday refresh, an evening preview
+// check), and the latest prior-day row is often the market close —
+// the same close the next morning fetches — which reads as 0.00% even
+// when the price moved a lot since the morning update. (Nov 21, 2026:
+// 55 rows read 0.00% for exactly this reason — a Nov 20, 9:04 PM PT
+// refresh had recorded Friday's close, and the Nov 21 morning update
+// fetched that same close.)
 const getPriorDayClose = (
   priceHistory: Record<string, { price: number; recordedAt: string }[]>,
   stock: SavedStock
 ): { price: number; recordedAt: string } | null => {
   const history = priceHistory[stock.ticker.toUpperCase()] ?? [];
   const todayKey = format(new Date(), 'yyyy-MM-dd');
-  return history.find(entry => format(new Date(entry.recordedAt), 'yyyy-MM-dd') !== todayKey) ?? null;
+  // The most recent day before today that has any recorded close.
+  const priorDayKey = history
+    .map(entry => format(new Date(entry.recordedAt), 'yyyy-MM-dd'))
+    .find(dateKey => dateKey !== todayKey);
+  if (!priorDayKey) return null;
+  // Earliest close recorded on that day — the morning update's price,
+  // so extra refreshes later the same day can't move the baseline.
+  // History arrives newest-first, so the earliest row of that day is
+  // the last one carrying its date.
+  const rowsThatDay = history.filter(
+    entry => format(new Date(entry.recordedAt), 'yyyy-MM-dd') === priorDayKey
+  );
+  return rowsThatDay[rowsThatDay.length - 1] ?? null;
 };
 
 // Day Change = today's current price vs the most recent prior-day
